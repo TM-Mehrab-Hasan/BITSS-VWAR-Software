@@ -15,23 +15,31 @@ def get_base_dir() -> str:
 @lru_cache(maxsize=1)
 def get_internal_exclude_roots() -> set[str]:
     base = get_base_dir()
-    # When packaged by PyInstaller, also exclude the folder containing the EXE
+    # ALWAYS exclude the directory containing the executable (whether frozen or not)
     exe_dir = None
     try:
         if getattr(sys, 'frozen', False):
+            # PyInstaller executable
             exe_dir = os.path.abspath(os.path.dirname(sys.executable))
+        else:
+            # Running as Python script - exclude the script's directory
+            exe_dir = os.path.abspath(os.path.dirname(sys.argv[0]))
     except Exception:
         exe_dir = None
+    
     roots = {
         base,
+        os.path.join(base, 'assets'),
         os.path.join(base, 'assets', 'yara'),
         os.path.join(base, 'quarantine'),
+        os.path.join(base, 'scanvault'),
         os.path.join(base, 'build'),
         os.path.join(base, '__pycache__'),
+        os.path.join(base, 'data'),
         os.path.join(base, 'data', 'scan_queue'),
         os.path.join(base, '.venv'),
+        os.path.join(base, 'venv'),
         os.path.join(base, 'dist'),
-        os.path.join(base, 'build'),
         os.path.join(base, '.git'),
         os.path.join(base, '.mypy_cache'),
         os.path.join(base, '.pytest_cache'),
@@ -39,7 +47,14 @@ def get_internal_exclude_roots() -> set[str]:
         os.path.join(base, 'VWAR.spec'),
         os.path.join(base, '.vscode'),
         os.path.join(base, 'tests'),
+        os.path.join(base, 'Backup'),
+        os.path.join(base, 'Scanning'),
+        os.path.join(base, 'RMonitoring'),
+        os.path.join(base, 'activation'),
+        os.path.join(base, 'utils'),
     }
+    
+    # Always exclude exe directory and its subdirectories
     if exe_dir:
         roots.update({
             exe_dir,
@@ -49,7 +64,9 @@ def get_internal_exclude_roots() -> set[str]:
             os.path.join(exe_dir, 'quarantine'),
             os.path.join(exe_dir, 'scanvault'),
             os.path.join(exe_dir, 'data'),
+            os.path.join(exe_dir, '_internal'),
         })
+    
     return {os.path.abspath(p) for p in roots}
 
 @lru_cache(maxsize=1)
@@ -153,3 +170,25 @@ def is_excluded_path(path: str) -> tuple[bool, str]:
     if is_temp_like_file(norm):
         return True, 'TEMP_FILE'
     return False, 'NONE'
+
+
+def print_exclusion_debug():
+    """Print all excluded paths for debugging."""
+    print("\n" + "=" * 80)
+    print("EXCLUSION DEBUG INFO")
+    print("=" * 80)
+    print(f"Base directory: {get_base_dir()}")
+    print(f"Frozen (exe): {getattr(sys, 'frozen', False)}")
+    if getattr(sys, 'frozen', False):
+        print(f"Executable: {sys.executable}")
+    else:
+        print(f"Script: {sys.argv[0]}")
+    print("\nInternal exclude roots:")
+    for root in sorted(get_internal_exclude_roots()):
+        exists = "✓" if os.path.exists(root) else "✗"
+        print(f"  [{exists}] {root}")
+    print("\nTemp roots:")
+    for root in sorted(get_temp_roots()):
+        exists = "✓" if os.path.exists(root) else "✗"
+        print(f"  [{exists}] {root}")
+    print("=" * 80 + "\n")

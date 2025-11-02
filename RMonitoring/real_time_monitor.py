@@ -265,7 +265,7 @@ from queue import Queue
 from pathlib import Path
 from Scanning.scanner_core import scan_file_for_realtime
 from RMonitoring.pipe_client import start_pipe_reader, stop_pipe_reader
-from utils.exclusions import is_excluded_path
+from utils.exclusions import is_excluded_path, print_exclusion_debug
 from Scanning.scanvault import vault_capture_file
 from utils.logger import telemetry_inc, log_message
 from config import RENAME_FOLLOW_DEBUG
@@ -290,7 +290,8 @@ class RealTimeMonitor:
         self._cpp_proc = None
         self._pipe_thread = None
 
-        # No local exclude roots: use centralized utility
+        # Print exclusion debug info at startup
+        print_exclusion_debug()
 
         # Start the scan worker
         self.scan_worker = threading.Thread(target=self._scan_worker_loop, daemon=True)

@@ -844,7 +844,7 @@ Your security is our priority.
             from utils.update_checker import CURRENT_VERSION
             return CURRENT_VERSION
         except:
-            return "1.0.0"
+            return "3.0.0"
 
     def _open_file(self, path):
         """Open file with default application."""

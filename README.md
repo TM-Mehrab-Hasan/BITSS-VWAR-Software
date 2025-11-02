@@ -15,14 +15,18 @@ VWAR Scanner is an advanced malware detection and prevention system that combine
 
 ## 🎉 What's New in v3.0.0
 
-### 🚀 Major Updates (October 28, 2025)
+### 🚀 Major Updates (November 2, 2025)
 
-- **⚡ Real-Time License Validation** - Reduced from 6 hours to **30 seconds**! License changes now detected instantly
-- **🔄 Auto-Renew Management** - New homepage dropdown to enable/disable auto-renewal with real-time sync
-- **🔐 Enhanced API Security** - All 5 endpoints now properly authenticated with X-API-Key headers
-- **📱 Cross-Page Synchronization** - Auto-renew status updates across all pages within 1 second
-- **🎯 Better Device Management** - Re-activation detection for previously authorized devices
-- **🛡️ Installation Mode Exclusions** - Smart detection to reduce false positives during software setup
+- **⚡ Adaptive Validation Intervals** - Smart license checking: 60s (>30 days), 30s (8-30 days), 10s (≤7 days), 5s (expired)
+- **🔄 Real-Time Auto-Renew Sync** - Auto-renewal status syncs with database every validation cycle (10-60s)
+- **� Dynamic License Terms Page** - Updates every 2 seconds showing real-time license status
+- **🎯 Prominent Days Display** - Large color-coded "X Days Active" on homepage (Green >7 days, Red ≤7 days with blinking animation)
+- **� YARA Auto-Update** - Background thread automatically updates YARA rules during license validation
+- **🕐 24-Hour Offline Grace** - Extended from 6 hours to 24 hours for better offline resilience
+- **✅ 30-Day Auto-Renew Validation** - Prevents enabling auto-renew when <30 days remaining with user-friendly popup
+- **� Enhanced UI** - Removed Force Server Check button and yellow warning banner for cleaner interface
+- **�️ Clear History Button** - New button in scan page to clear tested files history
+- **🐛 Critical Bug Fixes** - Fixed YARA scanner tuple unpacking bug causing all files to fail scanning
 
 [See full changelog](#-version-history)
 
@@ -95,10 +99,17 @@ VWAR Scanner is an advanced malware detection and prevention system that combine
 - **Smart Device Management**: Automatic slot allocation (Device 1 & Device 2)
 - **Re-Activation Support**: Recognizes previously activated devices automatically
 - **Online Validation**: Encrypted API communication for verification
-- **Real-Time Validation**: Re-validates every **30 seconds** for instant expiry detection
-- **Server-Side Enforcement**: License changes (expiry, renewal, revocation) detected within 30 seconds
-- **Auto-Renew Management**: Enable/disable auto-renewal from homepage dropdown
+- **Adaptive Validation Intervals**: Smart checking based on expiry proximity
+  - 60 seconds when >30 days remaining (stable mode)
+  - 30 seconds when 8-30 days remaining (normal mode)
+  - 10 seconds when ≤7 days remaining (urgent mode)
+  - 5 seconds when expired (fast renewal detection)
+- **24-Hour Offline Grace**: Continues working offline for 24 hours using cached validation
+- **Server-Side Enforcement**: License changes detected within 5-60 seconds based on urgency
+- **Auto-Renew Management**: Enable/disable auto-renewal with 30-day validation
 - **Synchronized Status**: Auto-renew status updates in real-time across all pages
+- **Dynamic License Display**: Terms page refreshes every 2 seconds showing current status
+- **Visual Alerts**: Color-coded days remaining (Green >7, Red ≤7 with blinking animation)
 - **Time-Jump Detection**: Prevents system clock manipulation
 - **Renewal System**: 7-day advance warning before expiration
 - **Grace Period**: Warnings before expiration
@@ -628,7 +639,56 @@ VWAR Scanner is proprietary software developed by **Bitss.one**.
 
 ## 📊 Version History
 
-### v3.0.0 (Current - October 28, 2025)
+### v3.0.0 (Current - November 2, 2025)
+**Major Update: Adaptive Validation, Enhanced UI & Critical Bug Fixes**
+
+#### 🆕 New Features
+- ✅ **Adaptive Validation Intervals** - Smart license checking based on expiry proximity
+  - 60 seconds when >30 days remaining (stable mode)
+  - 30 seconds when 8-30 days remaining (normal mode)
+  - 10 seconds when ≤7 days remaining (urgent mode - real-time)
+  - 5 seconds when expired (fast renewal detection)
+- ✅ **Real-Time Auto-Renew Sync** - Status syncs with database every validation cycle
+- ✅ **Dynamic License Terms Page** - Refreshes every 2 seconds with real-time data
+- ✅ **Prominent Days Display** - Large "X Days Active" label on homepage
+  - Color-coded: Green (>7 days), Red (≤7 days)
+  - Blinking animation for urgent expiry (≤7 days)
+- ✅ **YARA Auto-Update System** - Background thread updates rules during validation
+- ✅ **24-Hour Offline Grace** - Extended from 6 hours for better offline resilience
+- ✅ **30-Day Auto-Renew Validation** - Prevents enabling when <30 days with popup message
+- ✅ **Clear History Button** - Clear tested files history in scan page
+
+#### 🎨 UI Improvements
+- Removed Force Server Check button (cleaner homepage)
+- Removed yellow warning banner (cleaner interface)
+- Days display shows normal colors until 7 days remaining
+- Auto-renew warnings only shown when <30 days
+- Better error messages with popup dialogs
+- Real-time dropdown sync without page refresh
+
+#### 🐛 Critical Bug Fixes
+- **Fixed YARA Scanner Crash** - All files were failing with "ERROR" status
+  - Root cause: `compile_yara_rules()` returns tuple `(rules, count)` but was not unpacked
+  - Scanner was calling `.match()` on tuple instead of rules object
+  - Now properly unpacks: `rules, rule_count = compile_yara_rules()`
+- Fixed days label disappearing when popup appears
+- Fixed auto-renew display not syncing with database
+- Fixed data format consistency (always "YES"/"NO" strings)
+
+#### 🔧 Technical Improvements
+- Enhanced error handling to preserve last valid values
+- Cache-based offline validation with staleness detection
+- Background YARA updates don't block main validation
+- Improved thread safety for UI updates
+- Better exception logging for debugging
+
+#### 📦 Build Updates
+- Version bumped to 3.0.0
+- Updated build script with new features list
+- All Python modules properly bundled
+- Comprehensive testing passed
+
+### v3.0.0 (October 28, 2025)
 **Major Update: Real-Time Validation & Auto-Renew Management**
 
 #### 🆕 New Features
@@ -670,7 +730,7 @@ VWAR Scanner is proprietary software developed by **Bitss.one**.
 - All Windows API dependencies bundled
 - 27.71 MB executable size
 
-### v1.0.0 (Initial Release - October 2025)
+### v3.0.0 (Initial Release - October 2025)
 - ✅ Real-time malware detection with C++ monitor
 - ✅ YARA-based scanning engine
 - ✅ ScanVault file isolation system

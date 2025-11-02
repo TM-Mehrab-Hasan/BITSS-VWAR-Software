@@ -1,0 +1,10 @@
+{
+    "enabled": true,
+    "time": "02:00",
+    "paths": [],
+    "include_subdirs": true,
+    "frequency": "realtime",
+    "weekdays": [],
+    "interval_minutes": 1440,
+    "last_run": null
+}

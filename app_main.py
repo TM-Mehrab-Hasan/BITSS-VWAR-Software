@@ -1,7 +1,7 @@
 import os
 import json
-
-from tkinter import Tk, Frame, Label, Button, LabelFrame, StringVar
+import tkinter as tk
+from tkinter import Tk, Frame, Label, Button, LabelFrame, StringVar, ttk, filedialog, Canvas, BooleanVar, Checkbutton, Entry, Spinbox, Radiobutton, messagebox
 from config import ICON_PATH, ACTIVATION_FILE, QUARANTINE_FOLDER
 from Scanning.scan_page import ScanPage
 from Backup.main_backup_page import BackupMainPage
@@ -17,7 +17,8 @@ from utils.startup import enable_startup, disable_startup, is_startup_enabled
 from Scanning.scheduled_scan import ScheduledScanRunner, load_scan_schedule, save_scan_schedule, ScanScheduleConfig
 
 from datetime import datetime, timedelta
-from utils.update_checker import check_for_updates,CURRENT_VERSION,up_to
+from utils.update_checker import check_for_updates, up_to
+from config import CURRENT_VERSION
 from cryptography.fernet import Fernet
 import base64, hashlib
 
@@ -106,11 +107,7 @@ class VWARScannerGUI:
         except Exception:
             pass
     
-    def reset_license_check_timer(self):
-        """Reset the license check countdown timer (called when validation runs)."""
-        from config import LICENSE_VALIDATION_INTERVAL
-        self.license_check_countdown = LICENSE_VALIDATION_INTERVAL
-        print("[UI] License check timer reset")
+
     
     def degrade_to_view_only(self, reason="License expired or invalid"):
         """Disable scanning features, keep quarantine/backup viewing available."""
@@ -154,7 +151,7 @@ class VWARScannerGUI:
             self.create_home_page()
         except Exception as e:
             print(f"[APP] Error updating home page: {e}")
-        
+
         # Switch to home page to show warning
         self.root.after(0, self.show_page, "home")
         
@@ -186,7 +183,26 @@ class VWARScannerGUI:
             self.create_home_page()
         except Exception as e:
             print(f"[APP] Error updating home page: {e}")
-        
+
+        # Restart scheduled scans if they were stopped
+        try:
+            if not hasattr(self, 'scheduled_scan_runner') or getattr(self.scheduled_scan_runner, 'stopped', False):
+                self.scheduled_scan_runner = ScheduledScanRunner(gui_ref=self)
+                self.scheduled_scan_runner.on_start = self._scheduled_scan_on_start
+                self.scheduled_scan_runner.on_progress = self._scheduled_scan_on_progress
+                self.scheduled_scan_runner.on_complete = self._scheduled_scan_on_complete
+                self.scheduled_scan_runner.start()
+        except Exception as e:
+            print(f"[APP] Failed to restart scheduled scans: {e}")
+
+        # Try to restart monitoring if available
+        try:
+            monitor_page = self.pages.get('monitor')
+            if monitor_page and not getattr(monitor_page, 'monitoring_active', False) and hasattr(monitor_page, 'toggle_monitoring'):
+                monitor_page.toggle_monitoring()
+        except Exception as e:
+            print(f"[APP] Failed to restart monitor: {e}")
+
         # Switch to home page to show restored state
         self.root.after(0, self.show_page, "home")
         
@@ -236,16 +252,29 @@ class VWARScannerGUI:
                   font=("Arial", 14, "bold"), 
                   bg="#FF4444", fg="white").pack(pady=15)
         
-        # 🔹 Update Status
-        update_frame = Frame(frame, bg="#009AA5")
-        update_frame.pack(side="top",fill='x')
+        # 🟡 7-Day Expiry Warning Banner (shown when ≤7 days remain)
+        self.expiry_warning_banner = Frame(frame, bg="#FFA500", height=50)
+        self.expiry_warning_label = Label(self.expiry_warning_banner, 
+                                          text="", 
+                                          font=("Arial", 12, "bold"), 
+                                          bg="#FFA500", fg="white")
+        self.expiry_warning_label.pack(pady=10)
+        # Banner will be shown/hidden by update_expiry_warning() method
+        # Pack it initially so it's ready (but hidden with pack_forget)
         
+        # 🔹 Update Status (Dynamic - updates in real-time)
+        self.update_frame = Frame(frame, bg="#009AA5")
+        self.update_frame.pack(side="top", fill='x')
+        
+        # Create update button/label (will be updated by _update_version_status)
         if up_to() == 1:
-            Button(update_frame, text="🔺 Update Available", command=check_for_updates,
-                bg="white", fg="red", font=("Arial", 10)).pack(side='left')
+            self.update_widget = Button(self.update_frame, text="🔺 Update Available", 
+                                       command=check_for_updates,
+                                       bg="white", fg="red", font=("Arial", 10))
         else:
-            Label(update_frame, text="✅ Up to Date", font=("Arial", 10),
-                bg="white", fg="green").pack(side='left')
+            self.update_widget = Label(self.update_frame, text="✅ Up to Date", 
+                                      font=("Arial", 10), bg="white", fg="green")
+        self.update_widget.pack(side='left')
         
         
         # 🔹 Title
@@ -264,6 +293,11 @@ class VWARScannerGUI:
         self.valid_till_label = Label(user_info_frame, text=f"Valid Till: {self.valid_till}",
             font=("Arial", 12), bg="white", fg="black")
         self.valid_till_label.pack(pady=2)
+        
+        # 📅 Days Remaining Display (large, color-coded, prominent)
+        self.days_remaining_label = Label(user_info_frame, text="", 
+                                         font=("Arial", 18, "bold"), bg="white")
+        self.days_remaining_label.pack(pady=10)
         
         # Start periodic valid_till update (every 5 seconds)
         def update_valid_till_display():
@@ -284,57 +318,92 @@ class VWARScannerGUI:
                     self.valid_till = new_valid_till
                     self.valid_till_label.config(text=f"Valid Till: {self.valid_till}")
                     print(f"[UI] Updated Valid Till: {self.valid_till}")
+                
+                # Update days remaining display
+                try:
+                    from datetime import datetime
+                    try:
+                        parsed_date = datetime.strptime(new_valid_till, "%Y-%m-%d %H:%M:%S").date()
+                    except ValueError:
+                        parsed_date = datetime.strptime(new_valid_till, "%Y-%m-%d").date()
+                    
+                    today = datetime.today().date()
+                    days_left = (parsed_date - today).days
+                    
+                    # Simple color coding: Normal (>7 days) vs Red (≤7 days)
+                    if days_left > 7:
+                        # Normal/Green - plenty of time
+                        days_color = "green"
+                        days_text = f"📅 License Valid for {days_left} Days"
+                        self.days_remaining_label.config(text=days_text, fg=days_color)
+                        # Stop any blinking animation
+                        if hasattr(self, '_blink_job'):
+                            self.root.after_cancel(self._blink_job)
+                            self._blink_job = None
+                    elif days_left > 0:
+                        # Red with blinking - urgent!
+                        days_text = f"⚠️ License Expires in {days_left} Days!"
+                        self.days_remaining_label.config(text=days_text, fg="#FF0000")
+                        # Start blinking animation if not already running
+                        if not hasattr(self, '_blink_job') or self._blink_job is None:
+                            self._start_blink_animation()
+                    else:
+                        # Expired - red, no blink
+                        days_color = "#FF0000"
+                        days_text = f"❌ License Expired {abs(days_left)} Days Ago"
+                        self.days_remaining_label.config(text=days_text, fg=days_color)
+                        # Stop blinking
+                        if hasattr(self, '_blink_job'):
+                            self.root.after_cancel(self._blink_job)
+                            self._blink_job = None
+                except Exception as e:
+                    # Don't clear the label - keep showing last valid value
+                    print(f"[UI] Days calculation error (keeping last value): {e}")
+                    pass
+                
+                # Update auto-renew warning based on days remaining
+                try:
+                    if days_left <= 30 and days_left > 0:
+                        # Show warning when <30 days
+                        if days_left > 15:
+                            warning_color = "#FFD700"  # Yellow
+                        elif days_left > 7:
+                            warning_color = "#FF6600"  # Orange
+                        else:
+                            warning_color = "#FF0000"  # Red
+                        
+                        self.auto_renew_warning_label.config(
+                            text="⚠️ Limited time remaining...",
+                            fg=warning_color
+                        )
+                    else:
+                        # Clear warning when >30 days or expired
+                        self.auto_renew_warning_label.config(text="")
+                except Exception:
+                    pass
+                
+                # 🔹 Refresh auto-renew dropdown from file (real-time sync with database)
+                try:
+                    # Only sync if auto_renew_var has been created
+                    if hasattr(self, 'auto_renew_var') and self.auto_renew_var:
+                        from activation.license_utils import get_auto_renew_status
+                        current_auto_renew = get_auto_renew_status()
+                        new_value = "YES" if current_auto_renew else "NO"
+                        # Only update if value changed to avoid unnecessary UI flicker
+                        if self.auto_renew_var.get() != new_value:
+                            self.auto_renew_var.set(new_value)
+                            print(f"[UI] Auto-renew status synced: {new_value}")
+                except Exception as e:
+                    print(f"[UI] Failed to sync auto-renew: {e}")
+                
             except Exception as e:
                 pass  # Silent fail
             
             # Schedule next update
-            self.root.after(5000, update_valid_till_display)  # Every 5 seconds
+            self.root.after(5000, update_valid_till_display)
         
         # Start the update loop
         update_valid_till_display()
-        
-        # 🔹 License Check Timer Countdown
-        from config import LICENSE_VALIDATION_INTERVAL
-        if not hasattr(self, 'license_check_countdown'):
-            self.license_check_countdown = LICENSE_VALIDATION_INTERVAL
-        
-        def update_license_check_timer():
-            """Update countdown timer for license validation checks."""
-            if not hasattr(self, 'license_check_timer_label') or not self.license_check_timer_label.winfo_exists():
-                return  # Stop if label destroyed
-            
-            try:
-                # Decrement countdown
-                self.license_check_countdown -= 1
-                
-                # If countdown reaches 0, reset to full interval
-                if self.license_check_countdown <= 0:
-                    self.license_check_countdown = LICENSE_VALIDATION_INTERVAL
-                
-                # Format as MM:SS
-                minutes = self.license_check_countdown // 60
-                seconds = self.license_check_countdown % 60
-                timer_text = f"{minutes:02d}:{seconds:02d}"
-                
-                # Update label with color coding
-                if self.license_check_countdown <= 5:
-                    # Last 5 seconds - show in red
-                    self.license_check_timer_label.config(text=timer_text, fg="#FF0000")
-                elif self.license_check_countdown <= 10:
-                    # Last 10 seconds - show in orange
-                    self.license_check_timer_label.config(text=timer_text, fg="#FF6600")
-                else:
-                    # Normal - show in teal
-                    self.license_check_timer_label.config(text=timer_text, fg="#009AA5")
-                
-            except Exception as e:
-                print(f"[UI] License timer update error: {e}")
-            
-            # Schedule next update (every 1 second)
-            self.root.after(1000, update_license_check_timer)
-        
-        # Start the timer countdown
-        update_license_check_timer()
         
         # 🔹 Auto-Renew Dropdown
         from activation.license_utils import get_auto_renew_status, update_auto_renew_status
@@ -362,14 +431,19 @@ class VWARScannerGUI:
                 temp_label.pack(side="left", padx=5)
                 self.root.after(3000, temp_label.destroy)  # Remove after 3 seconds
             else:
-                # Revert selection and show simplified error
+                # Revert selection
                 self.auto_renew_var.set("NO" if enabled else "YES")
-                # Show simplified error message
-                error_msg = "Failed to update. Check connection." if "Network" in message or "Invalid" in message else "Update failed."
-                error_label = Label(auto_renew_frame, text=f"✗ {error_msg}", 
-                                  font=("Arial", 9), bg="white", fg="red")
-                error_label.pack(side="left", padx=5)
-                self.root.after(5000, error_label.destroy)  # Remove after 5 seconds
+                
+                # Show popup messagebox for better visibility
+                from tkinter import messagebox
+                if "<30 days" in message or "Cannot Enable" in message:
+                    # Special case: 30-day restriction
+                    messagebox.showerror("Auto-Renew Restriction", message)
+                elif "Network" in message or "Invalid" in message:
+                    messagebox.showerror("Update Failed", f"Failed to update auto-renew.\n\n{message}\n\nPlease check your connection and try again.")
+                else:
+                    messagebox.showerror("Update Failed", f"Failed to update auto-renew.\n\n{message}")
+                
                 print(f"[AUTO-RENEW ERROR] {message}")  # Log full error to console
         
         auto_renew_dropdown = ttk.Combobox(auto_renew_frame, textvariable=self.auto_renew_var,
@@ -378,37 +452,61 @@ class VWARScannerGUI:
         auto_renew_dropdown.pack(side="left", padx=5)
         auto_renew_dropdown.bind("<<ComboboxSelected>>", on_auto_renew_change)
         
+        # 📅 Auto-Renew Warning Label (shown when <30 days remaining)
+        self.auto_renew_warning_label = Label(auto_renew_frame, text="", 
+                                             font=("Arial", 10, "bold"), bg="white")
+        self.auto_renew_warning_label.pack(side="left", padx=10)
         
-        # 🔹 License Controls Frame (License Terms button + Validation Timer)
+        
+        # 🔹 License Controls Frame (License Terms button + Last Server Check)
         # Positioned just above Auto Scanning Status
         license_controls_frame = Frame(frame, bg="#009AA5")
         license_controls_frame.pack(side="top", fill='x', padx=10, pady=10)
         
-        # Left side: License validation timer
-        timer_frame = Frame(license_controls_frame, bg="white", relief="ridge", borderwidth=2)
-        timer_frame.pack(side='left', padx=5)
+        # Left side: Last server check label (updated by LicenseValidator)
+        status_frame = Frame(license_controls_frame, bg="white", relief="ridge", borderwidth=2)
+        status_frame.pack(side='left', padx=5)
         
-        Label(timer_frame, text="🔄 Next License Check:", font=("Arial", 9, "bold"), 
+        Label(status_frame, text="� License Status:", font=("Arial", 9, "bold"), 
               bg="white", fg="#006666").pack(side="left", padx=5)
-        
-        self.license_check_timer_label = Label(timer_frame, text="00:30", font=("Arial", 10, "bold"), 
-                                                bg="white", fg="#009AA5")
-        self.license_check_timer_label.pack(side="left", padx=5)
+
+        try:
+            self.last_server_check_label = Label(status_frame, text="Last check: N/A", font=("Arial", 9),
+                                                 bg="white", fg="#666666")
+            self.last_server_check_label.pack(side='left', padx=(5,5))
+        except Exception:
+            self.last_server_check_label = None
         
         # Right side: License Terms button
         Button(license_controls_frame, text="📋 License Terms", font=("Arial", 10),
                command=lambda: self.show_page("license_terms")).pack(side='right', padx=5)
         
         
-                        # 🔹 Auto Scan Status
-        self.home_scan_status_label = Label(frame, text="Status: Running ●",
-                                            font=("Arial", 16, "bold"),
-                                            bg="#009AA5", fg="green")
-        
-        self.home_scan_status_label.pack(side="top",expand=True,fill='both')
-        
-        Label(self.home_scan_status_label, text="AUTO SCANNING STATUS :", font=("Arial", 18,"bold"),
-                bg="white", fg="BLACK").pack(side='left')
+        # 🔹 Auto Scan Status (clean panel with pulsing dot)
+        status_frame = Frame(frame, bg="#ffffff", relief="groove", borderwidth=1)
+        status_frame.pack(side="top", fill='x', padx=10, pady=8)
+
+        left_text = Label(status_frame, text="AUTO SCANNING STATUS", font=("Arial", 14, "bold"),
+                          bg="#ffffff", fg="#004d4d")
+        left_text.pack(side="left", padx=10, pady=10)
+
+        # Right side: status indicator with a pulsing dot and text
+        indicator_frame = Frame(status_frame, bg="#ffffff")
+        indicator_frame.pack(side="right", padx=10, pady=6)
+
+        self._scan_dot_canvas = None
+        try:
+            import tkinter as tk
+            self._scan_dot_canvas = tk.Canvas(indicator_frame, width=24, height=24, bg="#ffffff", highlightthickness=0)
+            self._scan_dot_canvas.pack(side="left", padx=(0,8))
+            # Create a small circle (dot)
+            self._scan_dot = self._scan_dot_canvas.create_oval(6,6,18,18, fill="#00AA00", outline="")
+        except Exception:
+            self._scan_dot_canvas = None
+
+        self._scan_status_label = Label(indicator_frame, text="Running", font=("Arial", 12, "bold"),
+                                        bg="#ffffff", fg="#007700")
+        self._scan_status_label.pack(side="left")
         
         
         
@@ -436,28 +534,39 @@ class VWARScannerGUI:
 
 
     def animate_home_status(self):
-        # Check if widget still exists (not destroyed)
+        # New animation: pulse the scan dot when monitoring is active
         try:
             if not self.root.winfo_exists():
-                return  # Stop animation if root window destroyed
-            
-            if not hasattr(self, 'home_scan_status_label') or not self.home_scan_status_label.winfo_exists():
-                return  # Stop animation if label destroyed
-            
+                return
+
+            monitor_active = False
             if getattr(self, "pages", None) and "monitor" in self.pages:
                 monitor_page = self.pages["monitor"]
-                if getattr(monitor_page, "monitoring_active", False):
-                    current = self.home_scan_status_label.cget("text")
-                    new_text = "Status: Running" if "●" in current else "Status: Running ●"
-                    self.home_scan_status_label.config(text=new_text)
-                else:
-                    self.home_scan_status_label.config(text="Status: Stopped", fg="red")
-            
-            # Schedule next animation only if not closing
+                monitor_active = bool(getattr(monitor_page, "monitoring_active", False))
+
+            # Update status text and color
+            if monitor_active:
+                self._scan_status_label.config(text="Running", fg="#007700")
+                # Pulse the dot (if canvas exists)
+                if getattr(self, '_scan_dot_canvas', None):
+                    # alternate between bright green and lighter green
+                    cur_fill = self._scan_dot_canvas.itemcget(self._scan_dot, 'fill')
+                    next_fill = '#00CC44' if cur_fill == '#00AA00' else '#00AA00'
+                    try:
+                        self._scan_dot_canvas.itemconfig(self._scan_dot, fill=next_fill)
+                    except Exception:
+                        pass
+            else:
+                self._scan_status_label.config(text="Stopped", fg="#AA0000")
+                if getattr(self, '_scan_dot_canvas', None):
+                    try:
+                        self._scan_dot_canvas.itemconfig(self._scan_dot, fill='#888888')
+                    except Exception:
+                        pass
+
             if not getattr(self, '_is_closing', False):
-                self.root.after(500, self.animate_home_status)
-        except Exception as e:
-            # Silently catch any errors during shutdown
+                self.root.after(600, self.animate_home_status)
+        except Exception:
             pass
 
     def show_page(self, name):
@@ -499,6 +608,123 @@ class VWARScannerGUI:
         sha256 = hashlib.sha256(secret_string.encode()).digest()
         return base64.urlsafe_b64encode(sha256)
 
+    def update_last_server_check(self, ts_str: str):
+        """Update the 'Last server check' label on the home page.
+
+        This is intended to be called from background threads via schedule_gui.
+        """
+        try:
+            if hasattr(self, 'last_server_check_label') and self.last_server_check_label and self.last_server_check_label.winfo_exists():
+                self.last_server_check_label.config(text=f"Last check: {ts_str}")
+        except Exception:
+            pass
+    
+    def update_expiry_warning(self, days_remaining):
+        """Update expiry warning banner (DISABLED - using inline display instead).
+        
+        The yellow warning banner has been removed. Now using the main
+        "License Expires in X Days" label with blinking animation for urgency.
+        
+        Args:
+            days_remaining (int): Days until expiry (None to hide banner)
+        """
+        try:
+            # First, refresh the Valid Till label from activation file
+            self._refresh_valid_till_now()
+            
+            # Always hide the yellow warning banner (no longer used)
+            if hasattr(self, 'expiry_warning_banner') and self.expiry_warning_banner:
+                self.expiry_warning_banner.pack_forget()
+                
+        except Exception as e:
+            print(f"[UI] Failed to update expiry warning: {e}")
+    
+    def _refresh_valid_till_now(self):
+        """Immediately refresh Valid Till label from activation file."""
+        try:
+            if not hasattr(self, 'valid_till_label') or not self.valid_till_label.winfo_exists():
+                return
+            
+            SECRET_KEY = self.generate_fernet_key_from_string("VWAR@BIFIN")
+            fernet = Fernet(SECRET_KEY)
+            with open(ACTIVATION_FILE, "rb") as f:
+                encrypted = f.read()
+                decrypted = fernet.decrypt(encrypted)
+                data = json.loads(decrypted.decode("utf-8"))
+            
+            new_valid_till = data.get("valid_till", "Unknown")
+            if new_valid_till != self.valid_till:
+                self.valid_till = new_valid_till
+                self.valid_till_label.config(text=f"Valid Till: {self.valid_till}")
+                print(f"[UI] ✅ Updated Valid Till: {self.valid_till}")
+        except Exception as e:
+            print(f"[UI] Failed to refresh Valid Till: {e}")
+
+    def _refresh_auto_renew_now(self):
+        """Immediately refresh Auto-Renew dropdown from activation file (called by validator)."""
+        try:
+            if not hasattr(self, 'auto_renew_var') or not self.auto_renew_var:
+                return
+            
+            from activation.license_utils import get_auto_renew_status
+            current_auto_renew = get_auto_renew_status()
+            new_value = "YES" if current_auto_renew else "NO"
+            
+            # Only update if value changed
+            if self.auto_renew_var.get() != new_value:
+                self.auto_renew_var.set(new_value)
+                print(f"[UI] ✅ Auto-renew synced from server: {new_value}")
+        except Exception as e:
+            print(f"[UI] Failed to refresh auto-renew: {e}")
+
+    def _start_blink_animation(self):
+        """Start blinking animation for days remaining label (when ≤7 days)."""
+        if not hasattr(self, 'days_remaining_label') or not self.days_remaining_label.winfo_exists():
+            return
+        
+        def blink():
+            try:
+                # Toggle between red and white
+                current_color = self.days_remaining_label.cget("fg")
+                new_color = "white" if current_color == "#FF0000" else "#FF0000"
+                self.days_remaining_label.config(fg=new_color)
+                # Schedule next blink (every 500ms for smooth animation)
+                self._blink_job = self.root.after(500, blink)
+            except Exception:
+                pass
+        
+        blink()
+
+    def _update_version_status(self):
+        """Update the version status widget in real-time (called by UpdateChecker)."""
+        try:
+            if not hasattr(self, 'update_widget') or not self.update_widget.winfo_exists():
+                return
+            
+            from utils.update_checker import get_update_checker
+            checker = get_update_checker()
+            
+            if not checker:
+                return
+            
+            # Destroy old widget
+            self.update_widget.destroy()
+            
+            # Create new widget based on update status
+            if checker.update_available:
+                self.update_widget = Button(self.update_frame, text="🔺 Update Available", 
+                                           command=check_for_updates,
+                                           bg="white", fg="red", font=("Arial", 10))
+                print(f"[UI] ✅ Update status changed: New version {checker.latest_version} available")
+            else:
+                self.update_widget = Label(self.update_frame, text="✅ Up to Date", 
+                                          font=("Arial", 10), bg="white", fg="green")
+                print(f"[UI] ✅ Update status changed: Up to date")
+            
+            self.update_widget.pack(side='left')
+            
+        except Exception as e:
+            print(f"[UI] Failed to update version status: {e}")
 
     
     

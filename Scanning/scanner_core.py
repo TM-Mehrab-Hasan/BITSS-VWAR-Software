@@ -10,8 +10,9 @@ import yara
 import os  # at the top if not already imported
 from utils.exclusions import is_excluded_path
 
-# Compile rules once at module load
-rules = compile_yara_rules()
+# Compile rules once at module load (unpack tuple: rules and count)
+rules, rule_count = compile_yara_rules()
+print(f"[INFO] {rule_count} YARA rules compiled and ready.")
 
 # Compute normalized project base directory and internal exclude roots
 _BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..")).replace("\\", "/").lower()

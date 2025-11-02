@@ -26,72 +26,142 @@ class LicenseTermsPage(Frame):
     def __init__(self, parent, controller):
         super().__init__(parent, bg="white")
         
-        activated_user = controller.activated_user
-
-        valid_till = controller.valid_till
+        # Store reference to controller for updates
+        self.controller = controller
         
-        created_at = controller.created_at
-
-        # Validate and compute license status
-        try:
-            print("[DEBUG] valid_till from controller:", valid_till)
-
-            # datetime.strptime(valid_till, "%Y-%m-%d")
-            
-            
-            # Try parsing full datetime first, then extract only date
-            try:
-                parsed_date = datetime.strptime(valid_till, "%Y-%m-%d %H:%M:%S").date()
-            except ValueError:
-                parsed_date = datetime.strptime(valid_till, "%Y-%m-%d").date()
-
-            # status = self.get_license_status(parsed_date)
-            status = self.get_license_status(parsed_date.strftime("%Y-%m-%d"))
-
-        except Exception:
-            status = "invalid"
-
-        message = LICENSE_MESSAGES.get(status, "").format(
-            date=valid_till if status != "invalid" else "N/A"
-        )
-
-        # Dynamic message
-
-        
+        # Create static title
         Label(self, text="📜 VWAR License Terms", font=("Arial", 18, "bold"),
                     bg="white", fg="#333").pack(pady=10)
         
+        # Create dynamic labels that will be updated
+        self.user_label = Label(self, text="", font=("Arial", 18, "bold"),
+                               bg="white", fg="#333")
+        self.user_label.pack(pady=10)
         
-        # Header
-        Label(self, text=f"USER : {activated_user}", font=("Arial", 18, "bold"),
-              bg="white", fg="#333").pack(pady=10)
+        self.created_at_label = Label(self, text="", font=("Arial", 18, "bold"),
+                                     bg="white", fg="#333")
+        self.created_at_label.pack(pady=10)
         
-        Label(self, text=f"Created AT : {created_at}", font=("Arial", 18, "bold"),
-              bg="white", fg="#333").pack(pady=10)
+        self.expiry_message_label = Label(self, text="", font=("Arial", 14, "bold"),
+                                         bg="white", fg="red")
+        self.expiry_message_label.pack(pady=20)
         
-        Label(self, text=message, font=("Arial", 14, "bold"),
-              bg="white", fg="red").pack(pady=20)
+        # Days remaining display (large, color-coded)
+        self.days_remaining_label = Label(self, text="", font=("Arial", 16, "bold"),
+                                         bg="white")
+        self.days_remaining_label.pack(pady=10)
         
         # Auto-Renew Status - Dynamic label that updates based on controller's auto_renew_var
         self.auto_renew_status_label = Label(self, text="", font=("Arial", 14, "bold"),
                                              bg="white")
         self.auto_renew_status_label.pack(pady=10)
         
-        # Store reference to controller for updates
-        self.controller = controller
+        # Perform initial update
+        self.refresh_license_data()
         
-        # Update the auto-renew display
-        self.update_auto_renew_display()
-        
-
-        # Bullet list
-        # for t in LICENSE_TERMS:
-        #     Label(self, text=t, font=("Arial", 12), anchor="w",
-        #           bg="white", fg="black", wraplength=800, justify="left").pack(padx=40, anchor="w", pady=4)
+        # Start periodic updates (every 2 seconds for real-time sync)
+        self._start_periodic_refresh()
 
         # Back button
         Button(self, text="⬅ Back to Home", font=("Arial", 12),
                command=lambda: controller.show_page("home")).pack(pady=20)
+    
+    def _start_periodic_refresh(self):
+        """Start periodic refresh of license data."""
+        def refresh_loop():
+            if not self.winfo_exists():
+                return  # Stop if widget destroyed
+            try:
+                self.refresh_license_data()
+            except Exception as e:
+                print(f"[LICENSE_TERMS] Refresh error: {e}")
+            # Schedule next refresh in 2 seconds
+            self.after(2000, refresh_loop)
+        
+        # Start the loop
+        refresh_loop()
+    
+    def refresh_license_data(self):
+        """Refresh all dynamic license data from activation file."""
+        try:
+            from cryptography.fernet import Fernet
+            import base64, hashlib, json, os
+            from config import ACTIVATION_FILE
+            
+            # Generate decryption key
+            def generate_fernet_key_from_string(secret_string):
+                sha256 = hashlib.sha256(secret_string.encode()).digest()
+                return base64.urlsafe_b64encode(sha256)
+            
+            SECRET_KEY = generate_fernet_key_from_string("VWAR@BIFIN")
+            fernet = Fernet(SECRET_KEY)
+            
+            # Read activation file
+            with open(ACTIVATION_FILE, "rb") as f:
+                encrypted = f.read()
+                decrypted = fernet.decrypt(encrypted)
+                data = json.loads(decrypted.decode("utf-8"))
+            
+            activated_user = data.get("username", "Unknown")
+            valid_till = data.get("valid_till", "Unknown")
+            created_at = data.get("created_at", "Unknown")
+            
+            # Update labels
+            self.user_label.config(text=f"USER : {activated_user}")
+            self.created_at_label.config(text=f"Created AT : {created_at}")
+            
+            # Calculate license status and days remaining
+            try:
+                # Parse valid_till date
+                try:
+                    parsed_date = datetime.strptime(valid_till, "%Y-%m-%d %H:%M:%S").date()
+                except ValueError:
+                    parsed_date = datetime.strptime(valid_till, "%Y-%m-%d").date()
+                
+                status = self.get_license_status(parsed_date.strftime("%Y-%m-%d"))
+                message = LICENSE_MESSAGES.get(status, "").format(
+                    date=valid_till if status != "invalid" else "N/A"
+                )
+                
+                # Calculate days remaining
+                today = datetime.today().date()
+                days_left = (parsed_date - today).days
+                
+                # Update expiry message
+                self.expiry_message_label.config(text=message)
+                
+                # Update days remaining with color coding
+                if days_left > 30:
+                    days_color = "green"
+                    days_text = f"📅 License Valid for {days_left} Days"
+                elif days_left > 15:
+                    days_color = "#FFD700"  # Yellow/Gold
+                    days_text = f"📅 License Valid for {days_left} Days"
+                elif days_left > 7:
+                    days_color = "#FF6600"  # Orange
+                    days_text = f"⚠️ License Valid for {days_left} Days"
+                elif days_left > 0:
+                    days_color = "#FF0000"  # Red
+                    days_text = f"⚠️ License Expires in {days_left} Days!"
+                else:
+                    days_color = "#FF0000"  # Red
+                    days_text = f"❌ License Expired {abs(days_left)} Days Ago"
+                
+                self.days_remaining_label.config(text=days_text, fg=days_color)
+                
+            except Exception as e:
+                self.expiry_message_label.config(text="⚠️ License data invalid")
+                self.days_remaining_label.config(text="")
+            
+            # Update auto-renew status
+            self.update_auto_renew_display()
+            
+        except Exception as e:
+            print(f"[LICENSE_TERMS] Failed to refresh license data: {e}")
+            self.user_label.config(text="USER : Unknown")
+            self.created_at_label.config(text="Created AT : Unknown")
+            self.expiry_message_label.config(text="⚠️ Failed to load license data")
+            self.days_remaining_label.config(text="")
     
     def update_auto_renew_display(self):
         """Update the auto-renew status display based on controller's current value."""
@@ -110,11 +180,8 @@ class LicenseTermsPage(Frame):
             
             self.auto_renew_status_label.config(text=auto_renew_text, fg=auto_renew_color)
             
-            # Schedule next update in 1 second to keep it in sync
-            self.after(1000, self.update_auto_renew_display)
         except Exception as e:
-            # If there's an error, just stop updating
-            print(f"[DEBUG] Error updating auto-renew display: {e}")
+            # Silent fail
             pass
 
     def get_license_status(self, valid_till_str):

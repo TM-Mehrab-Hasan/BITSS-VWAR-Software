@@ -266,8 +266,20 @@ class ScanPage(Frame):
         self.stop_scan = False
 
         self.build_ui()
-        fetch_and_generate_yara_rules(self.log)
-        self.root.after(100, self.load_rules)
+        # Fetch and compile rules, showing only one relevant message for each step
+        fetch_status, fetch_count = fetch_and_generate_yara_rules(lambda msg: None)  # suppress direct log
+        rules, compile_count = compile_yara_rules(log_func=lambda msg: None)  # suppress direct log
+        # Simplified UI message: hide internal method details from end user
+        if compile_count > 0 and fetch_status in ("remote", "local"):
+            # Rules were fetched/loaded and compiled successfully
+            self.log("Scanning system is up to date.")
+        elif compile_count > 0:
+            # Compiled rules present but fetch source uncertain
+            self.log("Scanning system is ready.")
+        else:
+            # No rules available
+            self.log("Scanning system: no YARA rules available. Please check configuration.")
+        self.rules = rules
 
     # def build_ui(self):
     #     # Back Button
@@ -393,7 +405,19 @@ class ScanPage(Frame):
         right_result = Frame(results_frame, bg="#0A8D05")
         right_result.pack(side="right", expand=True, fill="both", padx=5)
 
-        Label(right_result, text="TESTED FILES", bg="#0A8D05", fg="white", font=("Inter", 16, "bold")).pack(fill="x")
+        # Header with Clear button
+        tested_header = Frame(right_result, bg="#0A8D05")
+        tested_header.pack(fill="x")
+        
+        Label(tested_header, text="TESTED FILES", bg="#0A8D05", fg="white", font=("Inter", 16, "bold")).pack(side="left", padx=5)
+        
+        # Clear History button
+        clear_btn = Button(tested_header, text="🗑️ Clear", command=self.clear_tested_history,
+                          bg="#FF6600", fg="white", font=("Inter", 10, "bold"),
+                          relief="raised", cursor="hand2")
+        clear_btn.pack(side="right", padx=5, pady=2)
+        Tooltip(clear_btn, "Clear the tested files history")
+        
         self.tested_text = Text(right_result, bg="#B6F7AD", fg="#000000", wrap="word")
         self.tested_text.pack(fill="both", expand=True)
 
@@ -462,6 +486,15 @@ class ScanPage(Frame):
     def stop_scan_thread(self):
         self.stop_scan = True
         self.log("[INFO] Scan stop requested.", "load")
+
+    def clear_tested_history(self):
+        """Clear the tested files history."""
+        try:
+            self.tested_text.delete("1.0", "end")
+            self.log("[INFO] Tested files history cleared.", "load")
+            log_message("[SCAN] Tested files history cleared by user.")
+        except Exception as e:
+            log_message(f"[ERROR] Failed to clear tested history: {e}")
 
     def load_rules(self):
         self.rules = compile_yara_rules(log_func=self.log)

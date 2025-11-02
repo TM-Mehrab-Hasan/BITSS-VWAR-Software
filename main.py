@@ -56,7 +56,10 @@ def run_vwar_monitor():
         # Dev mode
         base_path = os.path.dirname(os.path.abspath(__file__))
 
-    monitor_path = os.path.join(base_path, "vwar_monitor.exe")
+    # The native monitor lives in the 'vwar_monitor' subfolder. Resolve the
+    # executable path accordingly so it works in both dev and PyInstaller
+    # frozen bundles where datas include the 'vwar_monitor' directory.
+    monitor_path = os.path.join(base_path, "vwar_monitor", "vwar_monitor.exe")
 
     if os.path.exists(monitor_path):
         try:                                                                                        
@@ -149,7 +152,14 @@ def main():
         def on_expiry_warning(days_left):
             """Called when license is expiring soon (7 days or less)."""
             print(f"[LICENSE] Expiry warning: {days_left} days remaining")
-            # Notify user
+            
+            # Update warning banner on home page
+            try:
+                app.schedule_gui(app.update_expiry_warning, days_left)
+            except Exception:
+                pass
+            
+            # Send toast notification (once per day)
             try:
                 notify("⏰ License Expiring Soon", 
                        f"Your license expires in {days_left} day(s).\nPlease renew to continue using VWAR Scanner.")
@@ -178,6 +188,11 @@ def main():
         
         # Store validator reference for cleanup
         app.license_validator = license_validator
+        
+        # Real-time update checker not needed - using simple version
+        # from utils.update_checker import start_update_checker
+        # update_checker = start_update_checker(app_instance=app)
+        # app.update_checker = update_checker
         
         # Create tray icon functions
         def restore():

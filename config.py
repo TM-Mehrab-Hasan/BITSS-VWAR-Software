@@ -4,7 +4,7 @@
 # YARA_RULE_FOLDER = "assets/yara/"
 # QUARANTINE_FOLDER = "quarantine"
 # BACKUP_FOLDER = "VWARbackup"
-CURRENT_VERSION = "1.0.0"
+CURRENT_VERSION = "3.0.0"
 
 import os
 from utils.path_utils import resource_path
@@ -59,6 +59,20 @@ ICON_PATH = "assets/VWAR.ico"
 
 # === Activation ===
 ACTIVATION_FILE = os.path.join("data", "activation.enc")
+LICENSE_CACHE_FILE = os.path.join("data", "license_cache.json")
+
+# === Real-Time License Validation Settings ===
+# Check intervals (seconds) - adaptive based on expiry proximity
+LICENSE_CHECK_INTERVAL_STABLE = 60      # When >30 days remain
+LICENSE_CHECK_INTERVAL_NORMAL = 30      # When 8-30 days remain  
+LICENSE_CHECK_INTERVAL_URGENT = 10      # When ≤7 days remain
+LICENSE_CHECK_INTERVAL_EXPIRED = 5      # When expired (fast renewal detection)
+
+# Offline grace period - how long to allow offline usage (hours)
+LICENSE_OFFLINE_GRACE_HOURS = 24
+
+# Warning thresholds (days)
+LICENSE_WARNING_DAYS = 7                # Show warning when ≤7 days remain
 
 # === YARA Rule Handling ===
 YARA_FOLDER = os.path.join("assets", "yara")

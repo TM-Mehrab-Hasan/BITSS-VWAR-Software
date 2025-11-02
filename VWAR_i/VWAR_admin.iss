@@ -4,19 +4,21 @@ AppVersion=1.0
 DefaultDirName={pf}\VWARScanner
 DefaultGroupName=VWARScanner
 OutputBaseFilename=VWAR_Installer
-LicenseFile="D:\VWAR_i\license.txt"
+LicenseFile="G:\Ratul\Job\BFIN IT\Versions\Bitss\BITSS-VWAR-Software\VWAR_i\license.txt"
 PrivilegesRequired=admin
 DisableProgramGroupPage=yes
 Compression=lzma
 SolidCompression=yes
-SetupIconFile="D:\VWAR_i\assets\VWAR.ico"
+SetupIconFile="G:\Ratul\Job\BFIN IT\Versions\Bitss\BITSS-VWAR-Software\VWAR_i\assets\VWAR.ico"
 
 
 [Files]
-Source: "D:\VWAR_i\VWAR.exe"; DestDir: "{app}"; DestName: "VWAR.exe"; Flags: ignoreversion
-Source: "D:\VWAR_i\assets\VWAR.ico"; DestDir: "{app}\assets"; Flags: ignoreversion
-Source: "D:\VWAR_i\Vwar User Manual.pdf"; DestDir: "{app}"; Flags: ignoreversion
-Source: "D:\VWAR_i\vwar_monitor.exe"; DestDir: "{app}\vwar_monitor"; DestName: "vwar_monitor.exe"; Flags: ignoreversion
+Source: "G:\Ratul\Job\BFIN IT\Versions\Bitss\BITSS-VWAR-Software\VWAR_i\VWAR.exe"; DestDir: "{app}"; DestName: "VWAR.exe"; Flags: ignoreversion
+Source: "G:\Ratul\Job\BFIN IT\Versions\Bitss\BITSS-VWAR-Software\VWAR_i\assets\VWAR.ico"; DestDir: "{app}\assets"; Flags: ignoreversion
+Source: "G:\Ratul\Job\BFIN IT\Versions\Bitss\BITSS-VWAR-Software\VWAR_i\Vwar User Manual.pdf"; DestDir: "{app}"; Flags: ignoreversion
+; Use the repository's top-level 'vwar_monitor' folder as the source for the
+; native executable rather than a hard-coded absolute path.
+Source: "G:\Ratul\Job\BFIN IT\Versions\Bitss\BITSS-VWAR-Software\VWAR_i\vwar_monitor\vwar_monitor.exe"; DestDir: "{app}\vwar_monitor"; DestName: "vwar_monitor.exe"; Flags: ignoreversion
 
 [Icons]
 Name: "{commondesktop}\VWAR Scanner"; Filename: "{app}\VWAR.exe"; IconFilename: "{app}\assets\VWAR.ico"

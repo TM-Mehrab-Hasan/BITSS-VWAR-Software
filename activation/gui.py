@@ -1,197 +1,3 @@
-# import os
-# import json
-# import requests
-# import tkinter as tk
-# from tkinter import messagebox
-# from activation.hwid import get_processor_info, get_motherboard_info
-# from config import ACTIVATION_FILE, API_GET, API_POST
-# from app_main import VWARScannerGUI
-# from datetime import datetime
-# from config import ICON_PATH
-# from cryptography.fernet import Fernet
-# import base64, hashlib
-
-# def generate_fernet_key_from_string(secret_string):
-#     sha256 = hashlib.sha256(secret_string.encode()).digest()
-#     return base64.urlsafe_b64encode(sha256)
-
-# SECRET_KEY = generate_fernet_key_from_string("VWAR@BIFIN")
-# fernet = Fernet(SECRET_KEY)
-
-# # def show_activation_window():
-# #     """Launch the activation GUI window."""
-# #     root = tk.Tk()
-# #     root.title("Activate VWAR Scanner")
-# #     root.geometry("400x250")
-# #     root.configure(bg="#1e1e1e")
-# #     root.resizable(False, False)
-
-# #     tk.Label(root, text="Enter Activation Key", bg="#1e1e1e", fg="white", font=("Arial", 12)).pack(pady=(30, 5))
-
-# #     key_entry = tk.Entry(root, font=("Arial", 12), width=30, justify="center")
-# #     key_entry.pack(pady=10)
-
-# #     tk.Button(
-# #         root, text="Activate", bg="#28a745", fg="white", font=("Arial", 12),
-# #         command=lambda: activate(key_entry.get(), root)
-# #     ).pack(pady=20)
-
-# #     root.mainloop()
-
-
-
-# def show_activation_window(reason=None):
-#     """Launch the activation GUI window and display the reason if provided."""
-#     root = tk.Tk()
-#     root.title("Activate VWAR Scanner")
-#     root.geometry("400x250")
-#     root.configure(bg="#1e1e1e")
-#     # root.iconbitmap(ICON_PATH)
-#     root.resizable(False, False)
-
-#     # Optional reason label
-#     if reason:
-#         tk.Label(root, text=reason, fg="red", bg="#1e1e1e", font=("Arial", 11, "bold")).pack(pady=(20, 5))
-
-#     tk.Label(root, text="Enter Activation Key", bg="#1e1e1e", fg="white", font=("Arial", 12)).pack(pady=(10 if reason else 30, 5))
-
-#     key_entry = tk.Entry(root, font=("Arial", 12), width=30, justify="center")
-#     key_entry.pack(pady=10)
-
-#     tk.Button(
-#         root, text="Activate", bg="#28a745", fg="white", font=("Arial", 12),
-#         command=lambda: activate(key_entry.get(), root)
-#     ).pack(pady=20)
-
-#     root.mainloop()
-
-
-# def activate(license_key, root):
-#     """Handles the activation process: check key, match hardware, and activate."""
-#     if not license_key:
-#         messagebox.showwarning("Empty Field", "Please enter a license key.")
-#         return
-    
-#     try:
-#         response = requests.get(API_GET)
-#         records = response.json().get("data", [])
-        
-#     except Exception as e:
-#         messagebox.showerror("API Error", f"Failed to connect to activation server {e}")
-#         return
-
-#     current_cpu = get_processor_info()
-#     current_mobo = get_motherboard_info()
-
-#     if not current_cpu or not current_mobo:
-#         messagebox.showerror("Hardware Error", "Failed to retrieve hardware information.")
-#         return
-
-
-
-#     found = None
-#     for record in records:
-#         if record.get("password") == license_key:
-#             found = record
-#             break
-
-#     if not found:
-#         messagebox.showerror("Invalid Key", "The license key entered is not valid.")
-#         return
-
-#     server_cpu = found.get("processor_id")
-#     server_mobo = found.get("motherboard_id")
-
-#     # Already activated on this PC
-#     if current_cpu == server_cpu and current_mobo == server_mobo:
-        
-#                 # Step: Check expiration before allowing access
-#         valid_till = found.get("valid_till")
-#         try:
-#             expiry = datetime.strptime(valid_till, "%Y-%m-%d %H:%M:%S")
-#             if datetime.now() > expiry:
-#                 messagebox.showerror("Expired Key", "This license key has expired.")
-#                 return
-#         except Exception as e:
-#             messagebox.showerror("Invalid Date", f"Failed to validate license expiry:\n{e}")
-#             return
-        
-        
-        
-#         _store_activation(found, current_cpu, current_mobo)
-#         messagebox.showinfo("Re-Activation", "VWAR Scanner is already activated on this system.")
-#         _launch_app(root)
-#         return
-
-#     # Key is in use on another system
-#     elif server_cpu and server_mobo:
-#         # print(f"{license_key} empty ")
-#     # if (server_cpu is None or server_cpu == "") and (server_mobo is None or server_mobo == ""):
-#         messagebox.showerror("Key In Use", "This key is already activated on another system.")
-#         return
-
-#     # Key is valid but not yet activated → POST to bind
-#     try:
-#         bind_payload = {
-#             "id": found["id"],
-#             "processor_id": current_cpu,
-#             "motherboard_id": current_mobo
-#         }
-        
-#         bind_response = requests.post(API_POST, json=bind_payload)
-#         a= bind_response.json()
-#         print(a['status'])
-        
-
-#         if a['status'] == "success":
-#             _store_activation(found, current_cpu, current_mobo)
-#             messagebox.showinfo("Activated", "Activation successful!")
-#             _launch_app(root)
-#             return
-#         else:
-#             messagebox.showerror("Activation Failed", "Server rejected activation attempt.")
-#             return
-
-#     except Exception as e:
-#         messagebox.showerror("POST Error", f"Failed to bind activation:\n{e}")
-#         return
-
-
-# def _store_activation(record, cpu, mobo):
-#     """Save activation info locally to activation.json."""
-#     try:
-#         os.makedirs(os.path.dirname(ACTIVATION_FILE), exist_ok=True)
-#         data = {
-#             "id": record["id"],
-#             "username": record["username"],
-#             "password": record["password"],
-#             "processor_id": cpu,
-#             "motherboard_id": mobo,
-#             "valid_till": record["valid_till"],
-#             "created_at": record.get("created_at", "")
-#         }
-#         json_str = json.dumps(data).encode("utf-8")
-#         encrypted = fernet.encrypt(json_str)
-#         with open(ACTIVATION_FILE, "wb") as f:
-#             f.write(encrypted)
-#         # with open(ACTIVATION_FILE, "w", encoding="utf-8") as f:
-#         #     json.dump(data, f, indent=4)
-        
-#         print("[INFO] Activation info stored.")
-#     except Exception as e:
-#         print(f"[ERROR] Failed to store activation: {e}")
-
-
-# def _launch_app(root):
-#     """Close activation window and launch the main VWAR app."""
-#     root.destroy()
-#     app_root = tk.Tk()
-#     VWARScannerGUI(app_root)
-#     app_root.mainloop()
-
-
-
-
 import os
 import json
 import requests
@@ -373,12 +179,22 @@ def activate(license_key, root, auto_renew=False):
 
     # Bind to the available slot
     try:
-        bind_payload = {
-            "id": found["id"],
-            "slot": target_slot,  # Tell server which slot to use (1 or 2)
-            "processor_id": current_cpu,
-            "motherboard_id": current_mobo
-        }
+        # Use slot-specific field names so server receives exactly the column we intend to update.
+        # API expects processor_id / motherboard_id for slot 1 and processor_id_2 / motherboard_id_2 for slot 2.
+        if target_slot == 1:
+            bind_payload = {
+                "id": found["id"],
+                "slot": target_slot,
+                "processor_id": current_cpu,
+                "motherboard_id": current_mobo
+            }
+        else:
+            bind_payload = {
+                "id": found["id"],
+                "slot": target_slot,
+                "processor_id_2": current_cpu,
+                "motherboard_id_2": current_mobo
+            }
         
         headers = {
             "X-API-Key": API_HW_INFO_INSERT_KEY,
@@ -386,20 +202,110 @@ def activate(license_key, root, auto_renew=False):
         }
         bind_response = requests.post(API_HW_INFO_INSERT, json=bind_payload, headers=headers)
         result = bind_response.json()
-        print(f"[ACTIVATION] Slot {target_slot} binding result: {result.get('status')}")
-        
+        # Log full bind response for diagnostics (helps determine if server inserted into both slots)
+        try:
+            print(f"[ACTIVATION] Slot {target_slot} binding result: {result.get('status')}")
+            print(f"[ACTIVATION] Bind response payload: {result}")
+        except Exception:
+            # Fallback to raw text if JSON is not printable
+            try:
+                print(f"[ACTIVATION] Bind response text: {bind_response.text}")
+            except Exception:
+                pass
+
+        # Also append the raw response to a local debug file for offline inspection
+        try:
+            dbg_path = os.path.join(os.getcwd(), 'activation_bind_debug.log')
+            with open(dbg_path, 'a', encoding='utf-8') as dbg_f:
+                dbg_f.write(f"\n--- BIND ATTEMPT ({datetime.now().isoformat()}) ---\n")
+                dbg_f.write(json.dumps({
+                    'target_slot': target_slot,
+                    'payload_sent': bind_payload,
+                    'response': result
+                }, default=str, ensure_ascii=False, indent=2))
+                dbg_f.write('\n')
+        except Exception as e:
+            print(f"[ACTIVATION] Failed to write bind debug file: {e}")
+
         if result.get('status') == "success":
-            _store_activation(found, current_cpu, current_mobo, auto_renew)
-            
+            # Prefer authoritative record returned by server (if present)
+            server_record = None
+            if isinstance(result.get('data'), dict):
+                server_record = result.get('data')
+            elif isinstance(result.get('record'), dict):
+                server_record = result.get('record')
+
+            try:
+                if server_record:
+                    # Safety guard: if the server returned values for BOTH device slots,
+                    # treat this as suspicious and avoid blindly overwriting the local
+                    # activation file with a possibly incorrect server record.
+                    slot1_populated = bool(server_record.get('processor_id') or server_record.get('motherboard_id'))
+                    slot2_populated = bool(server_record.get('processor_id_2') or server_record.get('motherboard_id_2'))
+                    if slot1_populated and slot2_populated:
+                        # Suspicious: server returned both slots. Log, write debug file, and conservatively
+                        # store only the locally-known 'found' record updated with the slot we intended to bind.
+                        warning_msg = (
+                            f"[ACTIVATION] Suspicious server record: both device slots populated for license id={found.get('id')}."
+                        )
+                        print(warning_msg)
+                        # Append to debug log
+                        try:
+                            dbg_path = os.path.join(os.getcwd(), 'activation_bind_debug.log')
+                            with open(dbg_path, 'a', encoding='utf-8') as dbg_f:
+                                dbg_f.write(f"\n--- SUSPICIOUS SERVER RECORD ({datetime.now().isoformat()}) ---\n")
+                                dbg_f.write(json.dumps({
+                                    'target_slot': target_slot,
+                                    'payload_sent': bind_payload,
+                                    'server_record': server_record
+                                }, default=str, ensure_ascii=False, indent=2))
+                                dbg_f.write('\n')
+                        except Exception as e:
+                            print(f"[ACTIVATION] Failed to append suspicious record to debug file: {e}")
+
+                        # Conservative local store: only update the intended slot fields so we don't mirror both-slot writes
+                        try:
+                            if target_slot == 1:
+                                found['processor_id'] = current_cpu
+                                found['motherboard_id'] = current_mobo
+                            else:
+                                found['processor_id_2'] = current_cpu
+                                found['motherboard_id_2'] = current_mobo
+                            _store_activation(found, current_cpu, current_mobo, auto_renew)
+                            # Inform user
+                            try:
+                                messagebox.showwarning(
+                                    "Activation Notice",
+                                    "Server returned unexpected device info. Activation stored locally for this device, "
+                                    "but server response was unusual. Please contact support if this persists."
+                                )
+                            except Exception:
+                                pass
+                        except Exception as e:
+                            print(f"[ACTIVATION] Failed to conservatively store activation: {e}")
+                    else:
+                        # Normal case: server record looks reasonable - store authoritative record
+                        _store_activation(server_record, current_cpu, current_mobo, auto_renew)
+                else:
+                    # Fallback: store the original found record updated locally
+                    found['processor_id'] = current_cpu if target_slot == 1 else found.get('processor_id')
+                    found['motherboard_id'] = current_mobo if target_slot == 1 else found.get('motherboard_id')
+                    if target_slot == 2:
+                        found['processor_id_2'] = current_cpu
+                        found['motherboard_id_2'] = current_mobo
+                    _store_activation(found, current_cpu, current_mobo, auto_renew)
+            except Exception as e:
+                print(f"[ACTIVATION] Warning: failed to store server record: {e}")
+
             # Sync auto-renew with server if enabled
             if auto_renew:
                 from activation.license_utils import update_auto_renew_status
                 success, msg = update_auto_renew_status(True)
                 if not success:
                     print(f"[WARNING] Failed to sync auto-renew: {msg}")
-            
+
             messagebox.showinfo(
-                "Activation Successful", 
+                "Activation Successful",
                 f"VWAR Scanner activated successfully!\n\n"
                 f"Device Slot: {target_slot} of 2\n"
                 f"Valid Until: {valid_till}\n"
