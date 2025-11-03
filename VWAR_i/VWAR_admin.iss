@@ -1,6 +1,6 @@
 [Setup]
 AppName=VWAR Scanner
-AppVersion=1.0
+AppVersion=3.0.0
 DefaultDirName={pf}\VWARScanner
 DefaultGroupName=VWARScanner
 OutputBaseFilename=VWAR_Installer

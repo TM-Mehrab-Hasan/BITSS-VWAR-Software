@@ -3,7 +3,12 @@ import subprocess
 
 def get_processor_info():
     try:
-        result = subprocess.run(['wmic', 'cpu', 'get', 'Name,ProcessorId'], capture_output=True, text=True)
+        result = subprocess.run(
+            ['wmic', 'cpu', 'get', 'Name,ProcessorId'],
+            capture_output=True,
+            text=True,
+            creationflags=subprocess.CREATE_NO_WINDOW
+        )
         lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
         if len(lines) >= 2:
             header = lines[0].split()
@@ -26,7 +31,9 @@ def get_motherboard_info():
     try:
         result = subprocess.run(
             ['wmic', 'baseboard', 'get', 'Product,Manufacturer,SerialNumber'],
-            capture_output=True, text=True
+            capture_output=True,
+            text=True,
+            creationflags=subprocess.CREATE_NO_WINDOW
         )
         lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
         if len(lines) >= 2:

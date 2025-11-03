@@ -803,12 +803,28 @@ class VWARScannerGUI:
                 pass
         if hasattr(self, "auto_backup"):
             self.auto_backup.stop()
+        
+        # Stop ScanVault processor
+        try:
+            from Scanning.vault_processor import stop_vault_processor
+            stop_vault_processor()
+        except Exception:
+            pass
+        
         # Stop tray icon
         if hasattr(self, "tray_icon") and self.tray_icon:
             try:
                 self.tray_icon.stop()
             except Exception:
                 pass
+        
+        # Stop the C++ monitor process
+        try:
+            from main import stop_vwar_monitor
+            stop_vwar_monitor()
+        except Exception as e:
+            print(f"[WARNING] Failed to stop monitor: {e}")
+        
         self.root.destroy()
 
 

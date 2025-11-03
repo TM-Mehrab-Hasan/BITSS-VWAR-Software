@@ -14,6 +14,39 @@ from utils.startup import is_startup_enabled
 from utils.tray import create_tray
 from config import ICON_PATH
 from utils.notify import notify
+import atexit
+import shutil
+
+# Suppress PyInstaller temp folder cleanup warnings
+def cleanup_pyinstaller_temp():
+    """Ensure all subprocesses are terminated before exit."""
+    global _monitor_process
+    
+    # Kill monitor process if still running
+    if _monitor_process:
+        try:
+            _monitor_process.terminate()
+            _monitor_process.wait(timeout=1)
+        except Exception:
+            try:
+                _monitor_process.kill()
+            except Exception:
+                pass
+    
+    # Kill any remaining vwar_monitor.exe processes
+    try:
+        subprocess.run(
+            ["taskkill", "/F", "/IM", "vwar_monitor.exe"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=subprocess.CREATE_NO_WINDOW,
+            timeout=2
+        )
+    except Exception:
+        pass
+
+# Register cleanup handler
+atexit.register(cleanup_pyinstaller_temp)
 
 def is_admin():
     """Check if running with administrator privileges."""
@@ -31,7 +64,12 @@ def run_as_admin():
 def already_running():
     """Check if VWAR.exe is already running."""
     try:
-        result = subprocess.run(["tasklist", "/FI", "IMAGENAME eq VWAR.exe"], stdout=subprocess.PIPE, text=True)
+        result = subprocess.run(
+            ["tasklist", "/FI", "IMAGENAME eq VWAR.exe"],
+            stdout=subprocess.PIPE,
+            text=True,
+            creationflags=subprocess.CREATE_NO_WINDOW
+        )
         lines = result.stdout.strip().splitlines()
         process_lines = [line for line in lines if "VWAR.exe" in line]
         if len(process_lines) > 2:  # More than one instance
@@ -47,8 +85,13 @@ def check_exe_name():
         messagebox.showerror("Invalid File", "Executable must be named VWAR.exe")
         sys.exit()
 
+# Global monitor process reference
+_monitor_process = None
+
 def run_vwar_monitor():
     """Start the C++ monitor process silently."""
+    global _monitor_process
+    
     if getattr(sys, 'frozen', False):
         # PyInstaller bundle
         base_path = sys._MEIPASS if hasattr(sys, "_MEIPASS") else os.path.dirname(sys.executable)
@@ -63,7 +106,7 @@ def run_vwar_monitor():
 
     if os.path.exists(monitor_path):
         try:                                                                                        
-            subprocess.Popen(
+            _monitor_process = subprocess.Popen(
                 [monitor_path],
                 creationflags=subprocess.CREATE_NO_WINDOW
             )
@@ -73,7 +116,42 @@ def run_vwar_monitor():
     else:
         print("[WARNING] VWAR Monitor not found:", monitor_path)
 
+def stop_vwar_monitor():
+    """Stop the C++ monitor process."""
+    global _monitor_process
+    
+    if _monitor_process:
+        try:
+            _monitor_process.terminate()
+            _monitor_process.wait(timeout=3)
+            print("[INFO] VWAR Monitor stopped.")
+        except Exception as e:
+            print(f"[WARNING] Failed to stop VWAR Monitor gracefully: {e}")
+            try:
+                _monitor_process.kill()
+            except Exception:
+                pass
+    
+    # Also try to kill any remaining vwar_monitor.exe processes
+    try:
+        subprocess.run(
+            ["taskkill", "/F", "/IM", "vwar_monitor.exe"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=subprocess.CREATE_NO_WINDOW
+        )
+    except Exception:
+        pass
+
 def main():
+    # CRITICAL: Set working directory to executable location
+    # This ensures data folders are created in the correct location
+    if getattr(sys, 'frozen', False):
+        # Running as compiled executable
+        exe_dir = os.path.dirname(sys.executable)
+        os.chdir(exe_dir)
+        print(f"[INFO] Working directory set to: {exe_dir}")
+    
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--silent", action="store_true", help="Run services only (no GUI)")
     parser.add_argument("--tray", action="store_true", help="Start minimized to system tray")
@@ -189,6 +267,14 @@ def main():
         # Store validator reference for cleanup
         app.license_validator = license_validator
         
+        # Start ScanVault processor immediately to handle vaulted files
+        try:
+            from Scanning.vault_processor import start_vault_processor
+            start_vault_processor()
+            print("[INFO] ScanVault processor started")
+        except Exception as e:
+            print(f"[WARNING] Failed to start ScanVault processor: {e}")
+        
         # Real-time update checker not needed - using simple version
         # from utils.update_checker import start_update_checker
         # update_checker = start_update_checker(app_instance=app)
@@ -209,9 +295,25 @@ def main():
                 # Stop monitoring and cleanup
                 if hasattr(app, 'on_close'):
                     app.on_close()
-                root.quit()
+                
+                # Stop the C++ monitor process
+                stop_vwar_monitor()
+                
+                # Give threads a moment to clean up
+                time.sleep(0.5)
+                
+                # Destroy root window
+                try:
+                    root.quit()
+                    root.destroy()
+                except Exception:
+                    pass
+                
+            except Exception as e:
+                print(f"[ERROR] Exit error: {e}")
             finally:
-                os._exit(0)
+                # Use sys.exit instead of os._exit to allow proper cleanup
+                sys.exit(0)
         
         def scan_now():
             try:

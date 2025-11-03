@@ -51,7 +51,7 @@ Write-Host "[2/5] Building VWAR.exe with PyInstaller..." -ForegroundColor Yellow
 Write-Host "This may take 2-5 minutes..." -ForegroundColor Gray
 Write-Host ""
 
-pyinstaller --noconfirm --onefile --windowed `
+pyinstaller --noconfirm --onefile --noconsole `
     --icon=assets/VWAR.ico `
     --manifest=vwar.manifest `
     --name=VWAR `
