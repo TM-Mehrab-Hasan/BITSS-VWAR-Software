@@ -33,6 +33,15 @@ class ScanVaultProcessor:
         """Start the background scanning thread pool."""
         if self._running:
             return
+        
+        # Ensure YARA rules are loaded before starting (reload from local storage only)
+        from Scanning import scanner_core
+        if not scanner_core.rules:
+            print("[SCANVAULT] Scanner not ready. Loading threat signatures from local storage...")
+            success, count = scanner_core.reload_yara_rules()
+            if not success:
+                print("[SCANVAULT WARNING] No threat signatures found. Files will be vaulted but not scanned until signatures are available.")
+        
         self._running = True
         self._executor = ThreadPoolExecutor(max_workers=self._max_workers, thread_name_prefix="VaultWorker")
         self._thread = threading.Thread(target=self._process_loop, daemon=True)

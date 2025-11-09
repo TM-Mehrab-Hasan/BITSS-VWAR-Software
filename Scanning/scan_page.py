@@ -513,7 +513,7 @@ class ScanPage(Frame):
         # Update tray tooltip
         if self.app_ref and hasattr(self.app_ref, 'tray_icon') and self.app_ref.tray_icon:
             try:
-                self.app_ref.tray_icon.update_tooltip(f"VWAR Scanner - Scanning: {os.path.basename(self.target_path)}")
+                self.app_ref.tray_icon.update_tooltip(f"VWAR - Scanning: {os.path.basename(self.target_path)}")
             except Exception:
                 pass
         
@@ -540,7 +540,7 @@ class ScanPage(Frame):
         # Reset tray tooltip
         if self.app_ref and hasattr(self.app_ref, 'tray_icon') and self.app_ref.tray_icon:
             try:
-                self.app_ref.tray_icon.update_tooltip("VWAR Scanner")
+                self.app_ref.tray_icon.update_tooltip("VWAR")
             except Exception:
                 pass
         

@@ -1,5 +1,6 @@
 import os
 import json
+import sys
 import tkinter as tk
 from tkinter import Tk, Frame, Label, Button, LabelFrame, StringVar, ttk, filedialog, Canvas, BooleanVar, Checkbutton, Entry, Spinbox, Radiobutton, messagebox
 from config import ICON_PATH, ACTIVATION_FILE, QUARANTINE_FOLDER
@@ -28,7 +29,7 @@ class VWARScannerGUI:
     def __init__(self, root):
         # Basic window setup
         self.root = root
-        self.root.title("VWAR SCANNER")
+        self.root.title("VWAR")
         self.root.geometry("1200x722")
         self.root.configure(bg="#009AA5")
 
@@ -41,8 +42,24 @@ class VWARScannerGUI:
         self.target_path = None
         self.stop_scan = False
         self.selected_files = []
-        self.rule_folder = os.path.join(os.getcwd(), "assets", "yara")
-        os.makedirs(self.rule_folder, exist_ok=True)
+        
+        # Get the correct base directory (works for both dev and frozen/compiled exe)
+        if getattr(sys, 'frozen', False):
+            # Running as compiled executable - use executable directory
+            base_dir = os.path.dirname(sys.executable)
+        else:
+            # Running as script - use current working directory
+            base_dir = os.getcwd()
+        
+        # YARA rules folder - should exist from installation
+        self.rule_folder = os.path.join(base_dir, "assets", "yara")
+        if not os.path.exists(self.rule_folder):
+            print(f"[WARNING] YARA rules folder not found: {self.rule_folder}")
+            # Try to create it (will fail if no permissions, but that's OK - installer should create it)
+            try:
+                os.makedirs(self.rule_folder, exist_ok=True)
+            except Exception as e:
+                print(f"[ERROR] Cannot create YARA folder: {e}")
 
         self.quarantine_folder = QUARANTINE_FOLDER
         os.makedirs(self.quarantine_folder, exist_ok=True)
@@ -171,7 +188,7 @@ class VWARScannerGUI:
                 "License Renewed",
                 "Your license has been renewed!\n\n"
                 "All scanning features are now enabled.\n"
-                "Thank you for using VWAR Scanner."
+                "Thank you for using VWAR."
             ))
         except Exception:
             pass
@@ -208,7 +225,7 @@ class VWARScannerGUI:
         
         
     def build_sidebar(self):
-        Label(self.sidebar, text="📂 VWAR SCANNER", font=("Arial", 14, "bold"),
+        Label(self.sidebar, text="📂 VWAR", font=("Arial", 14, "bold"),
             bg="#004d4d", fg="white").pack(pady=20)
 
 
@@ -278,26 +295,37 @@ class VWARScannerGUI:
         
         
         # 🔹 Title
-        Label(frame, text="VWAR SCANNER", font=("Arial", 24),
-            bg="#009AA5", fg="white").pack(side="top",expand=True,fill='both')
+        title_frame = Frame(frame, bg="#009AA5")
+        title_frame.pack(side="top", fill='x', pady=10)
+        
+        Label(title_frame, text="BITSS VWAR", font=("Arial", 26, "bold"),
+            bg="#009AA5", fg="white").pack()
+        Label(title_frame, text="Experience the New ERA of Windows Protection", 
+            font=("Arial", 14, "italic"),
+            bg="#009AA5", fg="#E0F7FA").pack()
         
         
-                # 🔹 User Info
-        user_info_frame = Frame(frame, bg="#009AA5")
-        user_info_frame.pack(side="top",expand=True,fill='both')
+        # 🔹 License Information Box (exactly like the image)
+        user_info_frame = LabelFrame(frame, text=" License Information ", 
+                                     font=("Arial", 12, "bold"),
+                                     bg="white", fg="black", 
+                                     relief="solid", borderwidth=1,
+                                     padx=25, pady=15)
+        user_info_frame.pack(side="top", fill='x', padx=20, pady=10)
         
+        # Center all content
         Label(user_info_frame, text=f"User: {self.activated_user}",
-            font=("Arial", 12), bg="white", fg="black").pack(pady=2)
+            font=("Arial", 14, "bold"), bg="white", fg="black").pack(pady=5)
 
         # Dynamic Valid Till label that updates with license changes
         self.valid_till_label = Label(user_info_frame, text=f"Valid Till: {self.valid_till}",
             font=("Arial", 12), bg="white", fg="black")
-        self.valid_till_label.pack(pady=2)
+        self.valid_till_label.pack(pady=5)
         
-        # 📅 Days Remaining Display (large, color-coded, prominent)
+        # 📅 Days Remaining Display (green icon + text)
         self.days_remaining_label = Label(user_info_frame, text="", 
-                                         font=("Arial", 18, "bold"), bg="white")
-        self.days_remaining_label.pack(pady=10)
+                                         font=("Arial", 18, "bold"), bg="white", fg="green")
+        self.days_remaining_label.pack(pady=8)
         
         # Start periodic valid_till update (every 5 seconds)
         def update_valid_till_display():
@@ -330,25 +358,17 @@ class VWARScannerGUI:
                     today = datetime.today().date()
                     days_left = (parsed_date - today).days
                     
-                    # Simple color coding: Normal (>7 days) vs Red (≤7 days)
-                    if days_left > 7:
-                        # Normal/Green - plenty of time
-                        days_color = "green"
+                    # Display days remaining (green with calendar icon like in image)
+                    if days_left > 0:
+                        # Green text with calendar icon
                         days_text = f"📅 License Valid for {days_left} Days"
-                        self.days_remaining_label.config(text=days_text, fg=days_color)
+                        self.days_remaining_label.config(text=days_text, fg="green")
                         # Stop any blinking animation
                         if hasattr(self, '_blink_job'):
                             self.root.after_cancel(self._blink_job)
                             self._blink_job = None
-                    elif days_left > 0:
-                        # Red with blinking - urgent!
-                        days_text = f"⚠️ License Expires in {days_left} Days!"
-                        self.days_remaining_label.config(text=days_text, fg="#FF0000")
-                        # Start blinking animation if not already running
-                        if not hasattr(self, '_blink_job') or self._blink_job is None:
-                            self._start_blink_animation()
                     else:
-                        # Expired - red, no blink
+                        # Expired - red
                         days_color = "#FF0000"
                         days_text = f"❌ License Expired {abs(days_left)} Days Ago"
                         self.days_remaining_label.config(text=days_text, fg=days_color)
@@ -405,15 +425,9 @@ class VWARScannerGUI:
         # Start the update loop
         update_valid_till_display()
         
-        # 🔹 Auto-Renew Dropdown
+        # 🔹 Auto-Renew Section
         from activation.license_utils import get_auto_renew_status, update_auto_renew_status
         import tkinter.ttk as ttk
-        
-        auto_renew_frame = Frame(user_info_frame, bg="white")
-        auto_renew_frame.pack(pady=5)
-        
-        Label(auto_renew_frame, text="Auto-Renew:", font=("Arial", 12, "bold"), 
-              bg="white", fg="black").pack(side="left", padx=(10, 5))
         
         current_status = get_auto_renew_status()
         self.auto_renew_var = StringVar(value="YES" if current_status else "NO")
@@ -426,108 +440,117 @@ class VWARScannerGUI:
             if success:
                 # Show temporary success message
                 status_text = "enabled" if enabled else "disabled"
-                temp_label = Label(auto_renew_frame, text=f"✓ Auto-renew {status_text}", 
-                                 font=("Arial", 9), bg="white", fg="green")
-                temp_label.pack(side="left", padx=5)
-                self.root.after(3000, temp_label.destroy)  # Remove after 3 seconds
+                temp_label = Label(user_info_frame, text=f"✓ Auto-renew {status_text}", 
+                                 font=("Arial", 11), bg="white", fg="green")
+                temp_label.pack(pady=2)
+                self.root.after(3000, temp_label.destroy)
             else:
                 # Revert selection
                 self.auto_renew_var.set("NO" if enabled else "YES")
                 
-                # Show popup messagebox for better visibility
+                # Show popup messagebox
                 from tkinter import messagebox
                 if "<30 days" in message or "Cannot Enable" in message:
-                    # Special case: 30-day restriction
                     messagebox.showerror("Auto-Renew Restriction", message)
                 elif "Network" in message or "Invalid" in message:
-                    messagebox.showerror("Update Failed", f"Failed to update auto-renew.\n\n{message}\n\nPlease check your connection and try again.")
+                    messagebox.showerror("Update Failed", f"Failed to update auto-renew.\n\n{message}\n\nPlease check your connection.")
                 else:
                     messagebox.showerror("Update Failed", f"Failed to update auto-renew.\n\n{message}")
                 
-                print(f"[AUTO-RENEW ERROR] {message}")  # Log full error to console
+                print(f"[AUTO-RENEW ERROR] {message}")
         
-        auto_renew_dropdown = ttk.Combobox(auto_renew_frame, textvariable=self.auto_renew_var,
-                                          values=["YES", "NO"], state="readonly", width=8,
+        auto_renew_row = Frame(user_info_frame, bg="white")
+        auto_renew_row.pack(pady=8)
+        
+        Label(auto_renew_row, text="Auto-Renew:", font=("Arial", 12),
+            bg="white", fg="black").pack(side="left", padx=5)
+        
+        auto_renew_dropdown = ttk.Combobox(auto_renew_row, textvariable=self.auto_renew_var,
+                                          values=["YES", "NO"], state="readonly", width=10,
                                           font=("Arial", 11))
-        auto_renew_dropdown.pack(side="left", padx=5)
+        auto_renew_dropdown.pack(side="left")
         auto_renew_dropdown.bind("<<ComboboxSelected>>", on_auto_renew_change)
         
-        # 📅 Auto-Renew Warning Label (shown when <30 days remaining)
-        self.auto_renew_warning_label = Label(auto_renew_frame, text="", 
-                                             font=("Arial", 10, "bold"), bg="white")
-        self.auto_renew_warning_label.pack(side="left", padx=10)
+        # Auto-Renew Warning Label (hidden by default)
+        self.auto_renew_warning_label = Label(user_info_frame, text="", 
+                                             font=("Arial", 9), bg="white", fg="#FF6600")
+        self.auto_renew_warning_label.pack(pady=2)
         
+        # Last Sync - NOT shown inside license box in the image
         
-        # 🔹 License Controls Frame (License Terms button + Last Server Check)
-        # Positioned just above Auto Scanning Status
-        license_controls_frame = Frame(frame, bg="#009AA5")
-        license_controls_frame.pack(side="top", fill='x', padx=10, pady=10)
+        # 🔹 License Status Bar (exactly like the image - teal background)
+        license_status_frame = Frame(frame, bg="#009AA5")
+        license_status_frame.pack(side="top", fill='x', padx=20, pady=(0, 5))
         
-        # Left side: Last server check label (updated by LicenseValidator)
-        status_frame = Frame(license_controls_frame, bg="white", relief="ridge", borderwidth=2)
-        status_frame.pack(side='left', padx=5)
+        # Left: "Last Sync : Date & Time"
+        status_left = Frame(license_status_frame, bg="#009AA5")
+        status_left.pack(side="left")
         
-        Label(status_frame, text="� License Status:", font=("Arial", 9, "bold"), 
-              bg="white", fg="#006666").pack(side="left", padx=5)
+        Label(status_left, text="Last Sync :", font=("Arial", 11),
+            bg="#009AA5", fg="white").pack(side="left", padx=(5, 5))
+        
+        self.license_status_time = Label(status_left, text="Checking...",
+            font=("Arial", 11), bg="#009AA5", fg="white")
+        self.license_status_time.pack(side="left")
+        
+        # Hidden label for backward compatibility (update_last_server_check updates both)
+        self.last_server_check_label = Label(frame, text="", bg="#009AA5", fg="#009AA5")
+        # Don't pack this - it's invisible
+        
+        # Right: License Terms button
+        Button(license_status_frame, text="📋 License Terms", font=("Arial", 11),
+            command=lambda: self.show_page("license_terms"),
+            bg="white", fg="black", padx=10, pady=3,
+            relief="raised", cursor="hand2").pack(side="right", padx=5)
+        
+        # 🔹 Auto Scan Status Bar (exactly like the image - white background, compact)
+        status_frame = Frame(frame, bg="white", relief="solid", borderwidth=1)
+        status_frame.pack(side="top", fill='x', padx=20, pady=(5, 10))
+        
+        status_content = Frame(status_frame, bg="white")
+        status_content.pack(fill='x', padx=10, pady=8)
 
-        try:
-            self.last_server_check_label = Label(status_frame, text="Last check: N/A", font=("Arial", 9),
-                                                 bg="white", fg="#666666")
-            self.last_server_check_label.pack(side='left', padx=(5,5))
-        except Exception:
-            self.last_server_check_label = None
-        
-        # Right side: License Terms button
-        Button(license_controls_frame, text="📋 License Terms", font=("Arial", 10),
-               command=lambda: self.show_page("license_terms")).pack(side='right', padx=5)
-        
-        
-        # 🔹 Auto Scan Status (clean panel with pulsing dot)
-        status_frame = Frame(frame, bg="#ffffff", relief="groove", borderwidth=1)
-        status_frame.pack(side="top", fill='x', padx=10, pady=8)
+        # Left: "AUTO SCANNING STATUS" label
+        Label(status_content, text="AUTO SCANNING STATUS", font=("Arial", 16, "bold"),
+              bg="white", fg="black").pack(side="left")
 
-        left_text = Label(status_frame, text="AUTO SCANNING STATUS", font=("Arial", 14, "bold"),
-                          bg="#ffffff", fg="#004d4d")
-        left_text.pack(side="left", padx=10, pady=10)
-
-        # Right side: status indicator with a pulsing dot and text
-        indicator_frame = Frame(status_frame, bg="#ffffff")
-        indicator_frame.pack(side="right", padx=10, pady=6)
-
+        # Right: Green dot + "Running" text
+        status_right = Frame(status_content, bg="white")
+        status_right.pack(side="right")
+        
         self._scan_dot_canvas = None
         try:
             import tkinter as tk
-            self._scan_dot_canvas = tk.Canvas(indicator_frame, width=24, height=24, bg="#ffffff", highlightthickness=0)
-            self._scan_dot_canvas.pack(side="left", padx=(0,8))
-            # Create a small circle (dot)
-            self._scan_dot = self._scan_dot_canvas.create_oval(6,6,18,18, fill="#00AA00", outline="")
+            self._scan_dot_canvas = tk.Canvas(status_right, width=16, height=16, bg="white", highlightthickness=0)
+            self._scan_dot_canvas.pack(side="left", padx=(0, 5))
+            # Create a green indicator dot
+            self._scan_dot = self._scan_dot_canvas.create_oval(3,3,13,13, fill="#00CC00", outline="")
         except Exception:
             self._scan_dot_canvas = None
 
-        self._scan_status_label = Label(indicator_frame, text="Running", font=("Arial", 12, "bold"),
-                                        bg="#ffffff", fg="#007700")
+        self._scan_status_label = Label(status_right, text="Running", font=("Arial", 16, "bold"),
+                                        bg="white", fg="black")
         self._scan_status_label.pack(side="left")
         
         
+        # 🔹 About / Contact Us (exactly like the image - teal background)
+        contact_frame = Frame(frame, bg="#009AA5")
+        contact_frame.pack(side="top", fill='both', expand=True, padx=20, pady=(10, 15))
         
-                # 🔹 Contact Section
-        contact_frame = LabelFrame(frame, text="About / Contact Us",
-                                bg="#009AA5", fg="white",
-                                font=("Arial", 12, "bold"),
-                                padx=10, pady=10)
-        
-        contact_frame.pack(side="bottom",expand=True,fill='both')
+        Label(contact_frame, text="About / Contact Us",
+            bg="#009AA5", fg="white", font=("Arial", 11, "bold")).pack(pady=(8, 10))
         
         Label(contact_frame, text=f"Version: {CURRENT_VERSION}",
-            bg="#009AA5", fg="white", font=("Arial", 10)).pack(anchor="w")
-        Label(contact_frame, text="Developer BY : Bitss.one",
-            bg="#009AA5", fg="white", font=("Arial", 10)).pack(anchor="w")
-        # Label(contact_frame, text="Email: Bitss.fr",
-        #     bg="#009AA5", fg="white", font=("Arial", 10)).pack(anchor="w")
+            bg="#009AA5", fg="white", font=("Arial", 10)).pack(pady=2)
+        
+        Label(contact_frame, text="Developer BY: Bitss.one",
+            bg="#009AA5", fg="white", font=("Arial", 10)).pack(pady=2)
+        
         Label(contact_frame, text="Website: http://www.bitss.one",
-            bg="#009AA5", fg="white", font=("Arial", 10)).pack(anchor="w")
+            bg="#009AA5", fg="white", font=("Arial", 10), cursor="hand2").pack(pady=2)
+        
         Label(contact_frame, text="Support: support@bobosohomail.com",
-            bg="#009AA5", fg="white", font=("Arial", 10)).pack(anchor="w")
+            bg="#009AA5", fg="white", font=("Arial", 10), cursor="hand2").pack(pady=2)
 
         # 🔄 Status Animation
         self.animate_home_status()
@@ -544,23 +567,20 @@ class VWARScannerGUI:
                 monitor_page = self.pages["monitor"]
                 monitor_active = bool(getattr(monitor_page, "monitoring_active", False))
 
-            # Update status text and color
+            # Update status text and color (matching the image style)
             if monitor_active:
-                self._scan_status_label.config(text="Running", fg="#007700")
-                # Pulse the dot (if canvas exists)
+                self._scan_status_label.config(text="Running", fg="black")
+                # Keep dot green and steady (no pulsing like in the image)
                 if getattr(self, '_scan_dot_canvas', None):
-                    # alternate between bright green and lighter green
-                    cur_fill = self._scan_dot_canvas.itemcget(self._scan_dot, 'fill')
-                    next_fill = '#00CC44' if cur_fill == '#00AA00' else '#00AA00'
                     try:
-                        self._scan_dot_canvas.itemconfig(self._scan_dot, fill=next_fill)
+                        self._scan_dot_canvas.itemconfig(self._scan_dot, fill='#00CC00')
                     except Exception:
                         pass
             else:
-                self._scan_status_label.config(text="Stopped", fg="#AA0000")
+                self._scan_status_label.config(text="Stopped", fg="black")
                 if getattr(self, '_scan_dot_canvas', None):
                     try:
-                        self._scan_dot_canvas.itemconfig(self._scan_dot, fill='#888888')
+                        self._scan_dot_canvas.itemconfig(self._scan_dot, fill='#CCCCCC')
                     except Exception:
                         pass
 
@@ -609,13 +629,14 @@ class VWARScannerGUI:
         return base64.urlsafe_b64encode(sha256)
 
     def update_last_server_check(self, ts_str: str):
-        """Update the 'Last server check' label on the home page.
+        """Update the 'Last Sync' timestamp in the License Status bar.
 
         This is intended to be called from background threads via schedule_gui.
         """
         try:
-            if hasattr(self, 'last_server_check_label') and self.last_server_check_label and self.last_server_check_label.winfo_exists():
-                self.last_server_check_label.config(text=f"Last check: {ts_str}")
+            # Update license status time (in the teal License Status bar)
+            if hasattr(self, 'license_status_time') and self.license_status_time and self.license_status_time.winfo_exists():
+                self.license_status_time.config(text=f"{ts_str}")
         except Exception:
             pass
     
@@ -770,8 +791,8 @@ class VWARScannerGUI:
         """Ask user confirmation before exiting the application."""
         from tkinter import messagebox
         result = messagebox.askyesno(
-            "Quit VWAR Scanner",
-            "Are you sure you want to quit VWAR Scanner?\n\n"
+            "Quit VWAR",
+            "Are you sure you want to quit VWAR?\n\n"
             "Real-time protection will be disabled.\n"
             "Click 'No' to minimize to system tray instead.",
             icon='warning'

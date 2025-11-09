@@ -10,15 +10,15 @@ pefile==2023.2.7
 pillow==11.1.0
 plyer==2.1.0
 psutil==7.0.0
+PyMuPDF==1.24.13
 pycparser==2.22
 pyinstaller==6.11.1
 pyinstaller-hooks-contrib==2024.10
-pypiwin32==223
 pywin32==310
 pywin32-ctypes==0.2.3
 qrcode==8.0
 requests==2.32.3
-urllib3==2.3.0
+urllib3==2.2.3
 watchdog==6.0.0
 win10toast==0.9
 yara-python==4.5.4

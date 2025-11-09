@@ -11,8 +11,57 @@ import os  # at the top if not already imported
 from utils.exclusions import is_excluded_path
 
 # Compile rules once at module load (unpack tuple: rules and count)
+# Offline-First Design: Load local rules first, then check online for updates
+import os as _os
+from config import YARA_FOLDER as _YARA_FOLDER
+_os.makedirs(_YARA_FOLDER, exist_ok=True)
+
+# Step 1: Always try to compile local rules first (offline-first)
+print("[INFO] Initializing scanner...")
 rules, rule_count = compile_yara_rules()
-print(f"[INFO] {rule_count} YARA rules compiled and ready.")
+
+if rules:
+    print(f"[INFO] Scanner ready with {rule_count} threat signatures")
+    
+    # Step 2: Check online for new/updated rules in background (non-blocking)
+    def _check_online_rules():
+        try:
+            from Scanning.yara_engine import fetch_and_generate_yara_rules
+            fetch_status, fetched_count = fetch_and_generate_yara_rules(log_func=print)
+            
+            if fetch_status == "remote" and fetched_count > 0:
+                print(f"[INFO] Scanner updated with {fetched_count} total signatures")
+                # Reload rules to include new ones
+                global rules, rule_count
+                rules, rule_count = compile_yara_rules()
+                print(f"[INFO] Scanner is up-to-date")
+            elif fetch_status == "local":
+                print(f"[INFO] Scanner is up-to-date")
+            else:
+                print("[INFO] Scanner is up-to-date")
+        except Exception as e:
+            print(f"[INFO] Scanner is up-to-date")
+            log_message(f"[DEBUG] Online sync skipped: {e}")
+    
+    # Run online check in background thread (non-blocking)
+    import threading
+    threading.Thread(target=_check_online_rules, daemon=True, name="SignatureUpdate").start()
+else:
+    # Step 3: No local rules found - must fetch from server (first-time installation)
+    print("[INFO] Initializing scanner for first use...")
+    try:
+        from Scanning.yara_engine import fetch_and_generate_yara_rules
+        fetch_status, fetched_count = fetch_and_generate_yara_rules(log_func=print)
+        
+        # Compile the newly fetched rules
+        rules, rule_count = compile_yara_rules()
+        if rules:
+            print(f"[INFO] Scanner ready with {rule_count} threat signatures")
+        else:
+            print(f"[ERROR] Scanner initialization failed. Please check your internet connection.")
+    except Exception as e:
+        print(f"[ERROR] Scanner initialization failed. Please check your internet connection.")
+        log_message(f"[DEBUG] First-time setup failed: {e}")
 
 # Compute normalized project base directory and internal exclude roots
 _BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..")).replace("\\", "/").lower()
@@ -88,6 +137,29 @@ def _is_internal_path(path: str) -> bool:
 
 # Backwards-compatible structured result (tuple subclass)
 ScanResult = namedtuple("ScanResult", "matched rule quarantined_path meta_path status")
+
+
+def reload_yara_rules():
+    """Reload YARA rules from local storage only (no online fetch).
+    
+    Used by ScanVault processor when rules aren't loaded at startup.
+    Only compiles existing local rule files.
+    """
+    global rules, rule_count
+    try:
+        rules, rule_count = compile_yara_rules()
+        if rules:
+            log_message(f"[INFO] Reloaded {rule_count} threat signatures from local storage")
+            print(f"[INFO] Scanner reloaded with {rule_count} threat signatures")
+            return True, rule_count
+        else:
+            log_message("[WARNING] No local threat signatures found")
+            print("[WARNING] No threat signatures available in local storage")
+            return False, 0
+    except Exception as e:
+        log_message(f"[ERROR] Failed to reload threat signatures: {e}")
+        print(f"[ERROR] Failed to reload scanner")
+        return False, 0
 
 
 def scan_file_for_realtime(file_path):

@@ -57,6 +57,8 @@ pyinstaller --noconfirm --onefile --noconsole `
     --name=VWAR `
     --add-data "assets/VWAR.ico;assets" `
     --add-data "assets/yara;assets/yara" `
+    --add-data "assets/English copy of BITSS VWAR USER Manual.pdf;assets" `
+    --add-data "assets/French copy of BITSS VWAR USER Manual.pdf;assets" `
     --add-data "vwar_monitor;vwar_monitor" `
     --hidden-import=plyer.platforms.win.notification `
     --hidden-import=win10toast `
@@ -71,11 +73,15 @@ pyinstaller --noconfirm --onefile --noconsole `
     --hidden-import=PIL `
     --hidden-import=PIL.Image `
     --hidden-import=PIL.ImageDraw `
+    --hidden-import=PIL.ImageTk `
     --hidden-import=cryptography `
     --hidden-import=cryptography.fernet `
     --hidden-import=yara `
     --hidden-import=requests `
     --hidden-import=psutil `
+    --hidden-import=fitz `
+    --hidden-import=frontend `
+    --collect-all pymupdf `
     --hidden-import=threading `
     --hidden-import=concurrent.futures `
     --hidden-import=queue `
@@ -109,6 +115,28 @@ Write-Host "[3/5] Creating runtime directories..." -ForegroundColor Yellow
 New-Item -ItemType Directory -Force -Path ".\dist\quarantine" | Out-Null
 New-Item -ItemType Directory -Force -Path ".\dist\scanvault" | Out-Null
 New-Item -ItemType Directory -Force -Path ".\dist\data" | Out-Null
+
+# Copy assets folder with all subdirectories
+Write-Host "Copying assets folder..." -ForegroundColor Gray
+if (Test-Path ".\assets") {
+    Copy-Item -Path ".\assets" -Destination ".\dist\assets" -Recurse -Force
+    Write-Host "[OK] Assets folder copied" -ForegroundColor Green
+}
+else {
+    Write-Host "[WARNING] Assets folder not found" -ForegroundColor Yellow
+}
+
+# Copy vwar_monitor
+Write-Host "Copying VWAR Monitor..." -ForegroundColor Gray
+if (Test-Path ".\vwar_monitor\vwar_monitor.exe") {
+    New-Item -ItemType Directory -Force -Path ".\dist\vwar_monitor" | Out-Null
+    Copy-Item -Path ".\vwar_monitor\vwar_monitor.exe" -Destination ".\dist\vwar_monitor\" -Force
+    Write-Host "[OK] VWAR Monitor copied" -ForegroundColor Green
+}
+else {
+    Write-Host "[WARNING] VWAR Monitor not found" -ForegroundColor Yellow
+}
+
 Write-Host "[OK] Created quarantine, scanvault, data folders" -ForegroundColor Green
 Write-Host ""
 
@@ -151,6 +179,9 @@ Write-Host "Version: 3.0.0" -ForegroundColor White
 Write-Host "Build Date: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor White
 Write-Host ""
 Write-Host "New Features in v3.0.0:" -ForegroundColor White
+Write-Host "  [OK] Integrated PDF viewer in Help page" -ForegroundColor Green
+Write-Host "  [OK] Direct PDF viewing with PyMuPDF" -ForegroundColor Green
+Write-Host "  [OK] Page navigation controls" -ForegroundColor Green
 Write-Host "  [OK] Dynamic License Terms page (2-second refresh)" -ForegroundColor Green
 Write-Host "  [OK] Prominent 'X Days Active' display (color-coded)" -ForegroundColor Green
 Write-Host "  [OK] Force Server Check button removed" -ForegroundColor Green

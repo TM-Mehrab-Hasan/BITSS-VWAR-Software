@@ -1,36 +1,56 @@
 import os
 import tkinter as tk
-from tkinter import ttk, scrolledtext
+from tkinter import ttk, scrolledtext, messagebox, Canvas
 from datetime import datetime
 from utils.path_utils import resource_path
+from PIL import Image, ImageTk
+import io
+
+try:
+    import fitz  # PyMuPDF
+    PYMUPDF_AVAILABLE = True
+except ImportError:
+    PYMUPDF_AVAILABLE = False
+    print("[HELP] PyMuPDF not available. PDF viewer will fall back to external viewer.")
 
 class HelpPage(tk.Frame):
-    """Modern tabbed Help page with comprehensive documentation.
+    """Modern Help page with integrated PDF viewer.
     
     Features:
-    - Tabbed interface (Getting Started, Features, FAQ, Troubleshooting, Contact)
-    - Color scheme matches app theme (#009AA5, #004d4d)
-    - PDF guide access button
-    - Searchable content
+    - Direct PDF viewing inside the application
+    - Page navigation (Previous/Next)
+    - Language selection (English/French)
+    - Zoom controls
+    - Page counter
+    - Fallback to external viewer if PyMuPDF unavailable
     """
-    COMMON_FILENAMES = [
-        "Vwar User Manual.pdf", "Guide.pdf", "UserGuide.pdf", "VWAR_Guide.pdf", "VWAR_User_Guide.pdf",
-    ]
-
+    
     def __init__(self, parent, app):
         super().__init__(parent, bg="#009AA5")
         self.app = app
-
-        super().__init__(parent, bg="#009AA5")
-        self.app = app
-
+        self.current_pdf = None
+        self.current_page = 0
+        self.total_pages = 0
+        self.zoom_level = 1.0
+        self.pdf_document = None
+        
+        # Check if we can use integrated viewer
+        self.use_integrated_viewer = PYMUPDF_AVAILABLE
+        
+        if self.use_integrated_viewer:
+            self._create_integrated_viewer()
+        else:
+            self._create_fallback_viewer()
+    
+    def _create_integrated_viewer(self):
+        """Create integrated PDF viewer with PyMuPDF."""
         # Header
         header_frame = tk.Frame(self, bg="#004d4d")
         header_frame.pack(fill="x", pady=0)
         
         header = tk.Label(
             header_frame, 
-            text="❓ Help & Documentation", 
+            text="❓ Help & User Guide", 
             font=("Arial", 20, "bold"), 
             bg="#004d4d", 
             fg="white"
@@ -39,880 +59,750 @@ class HelpPage(tk.Frame):
         
         sub = tk.Label(
             header_frame,
-            text="Learn how to use VWAR Scanner effectively",
+            text="Complete user manual with screenshots",
+            font=("Arial", 11),
+            bg="#004d4d",
+            fg="#cccccc"
+        )
+        sub.pack(pady=(0, 15))
+        
+        # Find available PDFs
+        self.english_pdf = self._find_pdf("English")
+        self.french_pdf = self._find_pdf("French")
+        
+        # Main content frame (holds either welcome screen OR PDF viewer)
+        self.main_content_frame = tk.Frame(self, bg="#009AA5")
+        self.main_content_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        # Show welcome screen initially
+        self._show_welcome_screen()
+    
+    
+    def _show_welcome_screen(self):
+        """Display the welcome/language selection screen."""
+        # Close PDF document if open
+        if self.pdf_document:
+            try:
+                self.pdf_document.close()
+                self.pdf_document = None
+                self.current_pdf = None
+                self.current_page = 0
+                self.total_pages = 0
+            except Exception:
+                pass
+        
+        # Clear main content frame
+        for widget in self.main_content_frame.winfo_children():
+            widget.destroy()
+        
+        # Main white content box
+        content_frame = tk.Frame(self.main_content_frame, bg="#ffffff", relief="ridge", borderwidth=3)
+        content_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        # Title with icon
+        title_frame = tk.Frame(content_frame, bg="#ffffff")
+        title_frame.pack(pady=(40, 10))
+        
+        tk.Label(
+            title_frame,
+            text="📚 BITSS VWAR User Manual",
+            font=("Arial", 28, "bold"),
+            bg="#ffffff",
+            fg="#004d4d"
+        ).pack()
+        
+        # Subtitle
+        tk.Label(
+            content_frame,
+            text="Complete guide with step-by-step instructions and screenshots",
+            font=("Arial", 13),
+            bg="#ffffff",
+            fg="#666666"
+        ).pack(pady=(5, 3))
+        
+        tk.Label(
+            content_frame,
+            text="Available in English and French",
+            font=("Arial", 13),
+            bg="#ffffff",
+            fg="#666666"
+        ).pack(pady=(0, 40))
+        
+        # Language buttons
+        buttons_frame = tk.Frame(content_frame, bg="#ffffff")
+        buttons_frame.pack(pady=20)
+        
+        # English button
+        if self.english_pdf:
+            english_btn = tk.Button(
+                buttons_frame,
+                text="📄 Open English User Manual",
+                command=lambda: self._load_pdf(self.english_pdf, "English"),
+                bg="#007777",
+                fg="white",
+                font=("Arial", 14, "bold"),
+                padx=40,
+                pady=15,
+                relief="raised",
+                cursor="hand2",
+                borderwidth=3,
+                activebackground="#005555",
+                activeforeground="white"
+            )
+            english_btn.pack(pady=10)
+            
+            # File info
+            file_size = self._get_file_size(self.english_pdf)
+            tk.Label(
+                buttons_frame,
+                text=f"File: English copy of BITSS VWAR USER Manual.pdf ({file_size})",
+                font=("Arial", 9),
+                bg="#ffffff",
+                fg="#999999"
+            ).pack(pady=(0, 20))
+        
+        # French button
+        if self.french_pdf:
+            french_btn = tk.Button(
+                buttons_frame,
+                text="📄 Ouvrir le Manuel Utilisateur Français",
+                command=lambda: self._load_pdf(self.french_pdf, "French"),
+                bg="#007777",
+                fg="white",
+                font=("Arial", 14, "bold"),
+                padx=40,
+                pady=15,
+                relief="raised",
+                cursor="hand2",
+                borderwidth=3,
+                activebackground="#005555",
+                activeforeground="white"
+            )
+            french_btn.pack(pady=10)
+            
+            # File info
+            file_size = self._get_file_size(self.french_pdf)
+            tk.Label(
+                buttons_frame,
+                text=f"Fichier: French copy of BITSS VWAR USER Manual.pdf ({file_size})",
+                font=("Arial", 9),
+                bg="#ffffff",
+                fg="#999999"
+            ).pack(pady=(0, 20))
+        
+        # Warning if no PDFs found
+        if not self.english_pdf and not self.french_pdf:
+            tk.Label(
+                buttons_frame,
+                text="⚠️ User manual PDFs not found\n"
+                     "Please contact support for assistance",
+                font=("Arial", 12, "bold"),
+                bg="#ffffff",
+                fg="#cc0000",
+                justify="center"
+            ).pack(pady=30)
+        
+        # Separator line
+        separator = tk.Frame(content_frame, bg="#cccccc", height=2)
+        separator.pack(fill="x", padx=60, pady=(40, 30))
+        
+        # Footer section
+        footer_section = tk.Frame(content_frame, bg="#ffffff")
+        footer_section.pack(pady=(10, 30))
+        
+        tk.Label(
+            footer_section,
+            text="📞 Need More Help?",
+            font=("Arial", 16, "bold"),
+            bg="#ffffff",
+            fg="#004d4d"
+        ).pack(pady=(0, 15))
+        
+        tk.Label(
+            footer_section,
+            text="Need help? 📧 support@bobosohomail.com | 🌐 www.bitss.one",
+            font=("Arial", 11),
+            bg="#ffffff",
+            fg="#666666"
+        ).pack()
+    
+    def _show_pdf_viewer(self):
+        """Display the PDF viewer interface (replaces welcome screen)."""
+        # Clear main content frame
+        for widget in self.main_content_frame.winfo_children():
+            widget.destroy()
+        
+        # Control panel at top
+        control_frame = tk.Frame(self.main_content_frame, bg="#ffffff", relief="ridge", borderwidth=2)
+        control_frame.pack(fill="x", padx=0, pady=(0, 5))
+        
+        # Back button (left side)
+        back_btn = tk.Button(
+            control_frame,
+            text="◀ Back to Language Selection",
+            command=self._show_welcome_screen,
+            bg="#555555",
+            fg="white",
+            font=("Arial", 10, "bold"),
+            padx=15,
+            pady=5,
+            relief="raised",
+            cursor="hand2"
+        )
+        back_btn.pack(side="left", padx=10, pady=10)
+        
+        # Separator
+        tk.Frame(control_frame, bg="#cccccc", width=2, height=30).pack(side="left", padx=5)
+        
+        # Selected language label (left side) - will be updated when PDF loads
+        self.selected_lang_frame = tk.Frame(control_frame, bg="#ffffff")
+        self.selected_lang_frame.pack(side="left", padx=10, pady=10)
+        
+        self.selected_lang_label = tk.Label(
+            self.selected_lang_frame,
+            text="Selected Language: None",
+            font=("Arial", 11, "bold"),
+            bg="#ffffff",
+            fg="#004d4d"
+        )
+        self.selected_lang_label.pack(side="left")
+        
+        # Page navigation (right side)
+        self.nav_frame = tk.Frame(control_frame, bg="#ffffff")
+        self.nav_frame.pack(side="right", padx=10)
+        
+        self.prev_btn = tk.Button(
+            self.nav_frame,
+            text="◀ Previous",
+            command=self._previous_page,
+            bg="#009AA5",
+            fg="white",
+            font=("Arial", 10, "bold"),
+            padx=10,
+            pady=5,
+            state="disabled"
+        )
+        self.prev_btn.pack(side="left", padx=5)
+        
+        self.page_label = tk.Label(
+            self.nav_frame,
+            text="No PDF loaded",
+            font=("Arial", 10, "bold"),
+            bg="#ffffff",
+            fg="#004d4d"
+        )
+        self.page_label.pack(side="left", padx=10)
+        
+        self.next_btn = tk.Button(
+            self.nav_frame,
+            text="Next ▶",
+            command=self._next_page,
+            bg="#009AA5",
+            fg="white",
+            font=("Arial", 10, "bold"),
+            padx=10,
+            pady=5,
+            state="disabled"
+        )
+        self.next_btn.pack(side="left", padx=5)
+        
+        # PDF canvas with scrollbar
+        canvas_frame = tk.Frame(self.main_content_frame, bg="#ffffff", relief="sunken", borderwidth=2)
+        canvas_frame.pack(fill="both", expand=True, padx=0, pady=0)
+        
+        # Scrollbar
+        scrollbar = tk.Scrollbar(canvas_frame)
+        scrollbar.pack(side="right", fill="y")
+        
+        # Canvas for PDF rendering
+        self.pdf_canvas = Canvas(
+            canvas_frame,
+            bg="#e0e0e0",
+            yscrollcommand=scrollbar.set,
+            highlightthickness=0
+        )
+        self.pdf_canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.config(command=self.pdf_canvas.yview)
+        
+        # Re-render current page when canvas is resized (fixes initial zero-width issues)
+        self.pdf_canvas.bind("<Configure>", self._on_canvas_configure)
+
+        # Bind mouse wheel
+        self.pdf_canvas.bind("<MouseWheel>", self._on_mousewheel)
+    
+    def _show_welcome_message(self):
+        """Display welcome message on PDF canvas (deprecated - now uses _show_welcome_screen)."""
+        if not hasattr(self, 'pdf_canvas'):
+            return
+            
+        self.pdf_canvas.delete("all")
+        
+        canvas_width = self.pdf_canvas.winfo_width() or 800
+        canvas_height = self.pdf_canvas.winfo_height() or 600
+        
+        # Center text
+        x = canvas_width // 2
+        y = canvas_height // 2 - 50
+        
+        self.pdf_canvas.create_text(
+            x, y,
+            text="📚 BITSS VWAR User Manual",
+            font=("Arial", 24, "bold"),
+            fill="#004d4d"
+        )
+        
+        self.pdf_canvas.create_text(
+            x, y + 50,
+            text="Select a language above to view the user guide",
+            font=("Arial", 14),
+            fill="#555555"
+        )
+        
+        canvas_width = self.pdf_canvas.winfo_width() or 800
+        canvas_height = self.pdf_canvas.winfo_height() or 600
+        
+        # Center text
+        x = canvas_width // 2
+        y = canvas_height // 2 - 50
+        
+        self.pdf_canvas.create_text(
+            x, y,
+            text="📚 BITSS VWAR User Manual",
+            font=("Arial", 24, "bold"),
+            fill="#004d4d"
+        )
+        
+        self.pdf_canvas.create_text(
+            x, y + 50,
+            text="Select a language above to view the user guide",
+            font=("Arial", 14),
+            fill="#555555"
+        )
+    
+    def _load_pdf(self, pdf_path, language):
+        """Load and display PDF file.
+        
+        Args:
+            pdf_path: Full path to PDF file
+            language: Language name for display
+        """
+        try:
+            if not os.path.exists(pdf_path):
+                messagebox.showerror(
+                    "File Not Found",
+                    f"The {language} user manual could not be found:\n{pdf_path}"
+                )
+                return
+            
+            # Close previous PDF if open
+            if self.pdf_document:
+                self.pdf_document.close()
+            
+            # Show PDF viewer interface (if not already shown)
+            if not hasattr(self, 'pdf_canvas') or not self.pdf_canvas.winfo_exists():
+                self._show_pdf_viewer()
+            
+            # Open new PDF
+            self.pdf_document = fitz.open(pdf_path)
+            self.current_pdf = pdf_path
+            self.current_page = 0
+            self.total_pages = len(self.pdf_document)
+            
+            # Update UI
+            self.page_label.config(text=f"Page 1 / {self.total_pages}")
+            self.prev_btn.config(state="disabled")
+            self.next_btn.config(state="normal" if self.total_pages > 1 else "disabled")
+            
+            # Update selected language label
+            if hasattr(self, 'selected_lang_label'):
+                flag = "🇬🇧" if language == "English" else "🇫🇷"
+                self.selected_lang_label.config(text=f"Selected Language: {flag} {language}")
+            
+            # Render first page
+            # Make sure canvas size is calculated before rendering
+            try:
+                self.pdf_canvas.update_idletasks()
+            except Exception:
+                pass
+            self._render_page()
+            
+            print(f"[HELP] Loaded {language} PDF: {pdf_path} ({self.total_pages} pages)")
+            
+        except Exception as e:
+            messagebox.showerror(
+                "Error Loading PDF",
+                f"Failed to load {language} user manual:\n{str(e)}"
+            )
+            print(f"[HELP] Error loading PDF: {e}")
+    
+    def _render_page(self):
+        """Render current PDF page to canvas."""
+        if not self.pdf_document:
+            return
+        
+        try:
+            # Get page
+            page = self.pdf_document[self.current_page]
+            
+            # Calculate zoom to fit canvas width
+            canvas_width = self.pdf_canvas.winfo_width()
+            # If the canvas hasn't been fully laid out yet winfo_width() may return 0 or small values.
+            # Use a sensible minimum to avoid negative/zero target widths which cause PIL/fitz errors.
+            if not canvas_width or canvas_width < 200:
+                # try to get parent width as a fallback
+                try:
+                    canvas_width = self.winfo_width() or 800
+                except Exception:
+                    canvas_width = 800
+            canvas_width = max(canvas_width, 200)
+
+            # Get page pixmap at higher resolution, then scale to fit canvas
+            mat = fitz.Matrix(2.0, 2.0)  # High resolution rendering
+            pix = page.get_pixmap(matrix=mat)
+            
+            # Convert to PIL Image
+            img_data = pix.tobytes("png")
+            img = Image.open(io.BytesIO(img_data))
+            
+            # Resize to fit canvas width (with padding) - ensure positive sizes
+            target_width = max(canvas_width - 40, 100)
+            ratio = target_width / img.width
+            new_height = max(int(img.height * ratio), 100)
+            img = img.resize((int(target_width), int(new_height)), Image.Resampling.LANCZOS)
+            
+            # Convert to Tkinter PhotoImage
+            self.current_image = ImageTk.PhotoImage(img)
+            
+            # Clear canvas and display image
+            self.pdf_canvas.delete("all")
+            
+            # Center image horizontally
+            x = canvas_width // 2
+            self.pdf_canvas.create_image(x, 20, anchor="n", image=self.current_image)
+            
+            # Update scroll region
+            self.pdf_canvas.config(scrollregion=(0, 0, canvas_width, new_height + 40))
+            
+            # Scroll to top
+            self.pdf_canvas.yview_moveto(0)
+            
+        except Exception as e:
+            # Common cause: negative/zero dimensions when the canvas is not yet sized.
+            print(f"[HELP] Error rendering page: {e}")
+            messagebox.showerror("Rendering Error", f"Failed to render page:\n{str(e)}")
+    
+    def _previous_page(self):
+        """Navigate to previous page."""
+        if self.current_page > 0:
+            self.current_page -= 1
+            self._render_page()
+            self._update_navigation()
+    
+    def _next_page(self):
+        """Navigate to next page."""
+        if self.current_page < self.total_pages - 1:
+            self.current_page += 1
+            self._render_page()
+            self._update_navigation()
+    
+    def _update_navigation(self):
+        """Update navigation button states and page label."""
+        self.page_label.config(text=f"Page {self.current_page + 1} / {self.total_pages}")
+        
+        # Update button states
+        self.prev_btn.config(state="normal" if self.current_page > 0 else "disabled")
+        self.next_btn.config(state="normal" if self.current_page < self.total_pages - 1 else "disabled")
+    
+    def _on_mousewheel(self, event):
+        """Handle mouse wheel scrolling."""
+        self.pdf_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+    def _on_canvas_configure(self, event):
+        """Handle canvas resize events. Re-render the current page so the PDF fits the new size."""
+        # Only re-render if a PDF is currently loaded
+        if getattr(self, 'pdf_document', None):
+            try:
+                # render current page to fit new canvas size
+                self._render_page()
+            except Exception:
+                # swallow errors here; _render_page shows its own messagebox on failure
+                pass
+    
+    def _create_fallback_viewer(self):
+        """Create fallback viewer when PyMuPDF is not available.
+        Opens PDFs with external viewer instead of integrated viewer.
+        """
+        
+        # Footer
+        footer_frame = tk.Frame(content_frame, bg="#ffffff")
+        footer_frame.pack(side="bottom", fill="x", pady=20)
+        
+        support_info = tk.Label(
+            footer_frame,
+            text="Need help? 📧 support@bobosohomail.com | 🌐 www.bitss.one",
+            font=("Arial", 10),
+            bg="#ffffff",
+            fg="#555555"
+        )
+        support_info.pack()
+
+        # Header
+        header_frame = tk.Frame(self, bg="#004d4d")
+        header_frame.pack(fill="x", pady=0)
+        
+        header = tk.Label(
+            header_frame, 
+            text="❓ Help & User Guide", 
+            font=("Arial", 20, "bold"), 
+            bg="#004d4d", 
+            fg="white"
+        )
+        header.pack(pady=15)
+        
+        sub = tk.Label(
+            header_frame,
+            text="Complete user manual with screenshots",
             font=("Arial", 11),
             bg="#004d4d",
             fg="#cccccc"
         )
         sub.pack(pady=(0, 15))
 
-        # Create notebook (tabbed interface)
-        style = ttk.Style()
-        style.theme_use('default')
-        style.configure('Custom.TNotebook', background='#009AA5', borderwidth=0)
-        style.configure('Custom.TNotebook.Tab', 
-                       background='#007777', 
-                       foreground='white',
-                       padding=[20, 10],
-                       font=('Arial', 11, 'bold'))
-        style.map('Custom.TNotebook.Tab',
-                 background=[('selected', '#009AA5')],
-                 foreground=[('selected', 'white')])
-
-        self.notebook = ttk.Notebook(self, style='Custom.TNotebook')
-        self.notebook.pack(fill="both", expand=True, padx=10, pady=10)
-
-        # Create tabs
-        self._create_getting_started_tab()
-        self._create_features_tab()
-        self._create_faq_tab()
-        self._create_troubleshooting_tab()
-        self._create_contact_tab()
-
-        # Bottom bar with PDF button
-        bottom_frame = tk.Frame(self, bg="#004d4d")
-        bottom_frame.pack(fill="x", side="bottom")
-        
-        pdf_frame = tk.Frame(bottom_frame, bg="#004d4d")
-        pdf_frame.pack(pady=10)
-        
-        files = self._find_guides()
-        pdf_path = files.get("pdf")
-        pdf_name = files.get("pdf_name") or "User Manual"
-        
-        if pdf_path:
-            tk.Button(
-                pdf_frame,
-                text=f"📄 Open PDF Guide ({pdf_name})",
-                command=lambda: self._open_file(pdf_path),
-                bg="#007777",
-                fg="white",
-                font=("Arial", 11, "bold"),
-                padx=20,
-                pady=8,
-                relief="flat",
-                cursor="hand2"
-            ).pack(side="left", padx=5)
-            
-            tk.Button(
-                pdf_frame,
-                text="📁 Show in Folder",
-                command=lambda: self._open_folder(os.path.dirname(pdf_path)),
-                bg="#555555",
-                fg="white",
-                font=("Arial", 10),
-                padx=15,
-                pady=8,
-                relief="flat",
-                cursor="hand2"
-            ).pack(side="left", padx=5)
-        else:
-            tk.Label(
-                pdf_frame,
-                text="⚠️ PDF User Manual not found",
-                bg="#004d4d",
-                fg="#ffcc00",
-                font=("Arial", 10)
-            ).pack()
-
-    def _create_getting_started_tab(self):
-        """Getting Started tab with quick start guide."""
-        tab = tk.Frame(self.notebook, bg="white")
-        self.notebook.add(tab, text="🚀 Getting Started")
-        
-        # Scrollable text area
-        container = tk.Frame(tab, bg="white")
-        container.pack(fill="both", expand=True, padx=20, pady=15)
-        
-        text = scrolledtext.ScrolledText(
-            container,
-            wrap=tk.WORD,
-            font=("Arial", 11),
-            bg="white",
-            fg="#222",
-            relief="flat",
-            padx=15,
-            pady=15
-        )
-        text.pack(fill="both", expand=True)
-        
-        content = """
-🚀 QUICK START GUIDE
-
-Welcome to VWAR Scanner! Follow these steps to get started:
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-STEP 1: ACTIVATION
-• VWAR requires activation with a valid license key
-• Enter your license key when prompted on first launch
-• License is bound to your hardware for security
-• Contact support@bobosohomail.com if you need a license
-
-STEP 2: UNDERSTAND THE INTERFACE
-• Home: View license status and monitoring status
-• Scan: Manually scan files or folders
-• Backup: Create and restore file backups
-• Scan Vault: Review files being scanned
-• Help: Access this documentation
-• Schedule Scan: Configure automatic scanning
-
-STEP 3: REAL-TIME PROTECTION
-• VWAR automatically monitors your Downloads, Desktop, and Documents
-• New files are captured and scanned before you use them
-• Detected threats are automatically quarantined
-• A system tray icon shows VWAR is running
-
-STEP 4: MANUAL SCANNING
-• Go to the "Scan" page
-• Click "Browse" to select files or folders
-• Click "Start Scan" to begin scanning
-• View results and take action on detected threats
-
-STEP 5: SCHEDULE AUTOMATIC SCANS
-• Go to "Schedule Scan" page
-• Choose frequency (Hourly, Daily, Custom)
-• Set time and paths to scan
-• Click "Save" to activate scheduled scanning
-
-STEP 6: SYSTEM TRAY
-• VWAR runs in the system tray for continuous protection
-• Click X to minimize to tray (doesn't close the app)
-• Right-click tray icon for quick actions
-• Use "Quit VWAR" button in sidebar to exit completely
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-💡 IMPORTANT TIPS:
-✓ Keep VWAR running for continuous protection
-✓ Don't disable real-time monitoring during downloads
-✓ Review quarantined files regularly
-✓ Update VWAR when prompted for latest protection
-✓ Run VWAR as Administrator for full functionality
-
-"""
-        text.insert("1.0", content)
-        text.config(state="disabled")
-
-    def _create_features_tab(self):
-        """Features tab with detailed feature explanations."""
-        tab = tk.Frame(self.notebook, bg="white")
-        self.notebook.add(tab, text="📚 Features")
-        
-        container = tk.Frame(tab, bg="white")
-        container.pack(fill="both", expand=True, padx=20, pady=15)
-        
-        text = scrolledtext.ScrolledText(
-            container,
-            wrap=tk.WORD,
-            font=("Arial", 11),
-            bg="white",
-            fg="#222",
-            relief="flat",
-            padx=15,
-            pady=15
-        )
-        text.pack(fill="both", expand=True)
-        
-        content = """
-📚 VWAR SCANNER FEATURES
-
-Complete overview of all VWAR Scanner capabilities:
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-🛡️ REAL-TIME PROTECTION
-
-Monitors your system 24/7 for new and modified files:
-• Watches Downloads, Desktop, Documents folders
-• Monitors all non-system drives (D:, E:, etc.)
-• Scans files immediately upon creation/modification
-• Uses C++ monitor for high-performance detection
-• Minimal CPU and memory usage
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-🔍 YARA-BASED DETECTION
-
-Advanced threat detection using YARA rules:
-• Detects ransomware, spyware, trojans, worms
-• Identifies APT (Advanced Persistent Threats)
-• Pattern matching for known malware signatures
-• Regular rule updates for new threats
-• Low false-positive rate
-
-Supported threat types:
-✓ Ransomware (file encryption malware)
-✓ Spyware (data theft malware)
-✓ Trojans (backdoor access)
-✓ Worms (self-replicating malware)
-✓ APT malware (targeted attacks)
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-📦 SCANVAULT SYSTEM
-
-Innovative file isolation and scanning:
-• Captures files before they execute
-• Scans in isolated environment
-• Restores clean files automatically
-• Quarantines detected threats
-• Prevents malware execution
-• 🔧 Installation Mode for legitimate installers
-
-How it works:
-1. File created/downloaded → Moved to ScanVault
-2. Scanned with YARA rules
-3. If clean → Restored to original location
-4. If threat → Moved to Quarantine
-
-Installation Mode (NEW):
-• Temporarily skips installer files
-• Active for 10 minutes with countdown timer
-• Reduces false positives during software installation
-• Auto-deactivates after timer expires
-• Toggle from "Scan Vault" page (orange button)
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-🔐 QUARANTINE MANAGEMENT
-
-Safe isolation of detected threats:
-• Threats stored in secure quarantine folder
-• Original location and metadata preserved
-• Review quarantined items anytime
-• Restore false positives if needed
-• Permanent deletion option
-• Re-scan on restore for verification
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-⏰ SCHEDULED SCANNING
-
-Flexible automatic scanning options:
-• Realtime: Continuous monitoring
-• Hourly: Scan every hour at specified time
-• Twice Daily: Scan at two set times
-• Daily: Scan once per day
-• Custom: Set custom interval in minutes
-
-Features:
-✓ Multiple path scanning
-✓ Include/exclude subdirectories
-✓ Background scanning (doesn't interfere with work)
-✓ Last run timestamp tracking
-✓ "Run Now" button for manual trigger
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-💾 BACKUP & RESTORE
-
-Protect your important files:
-• Manual backup: Choose files/folders to backup
-• Auto backup: Schedule automatic backups
-• Restore: Recover files from backup
-• Version history preserved
-• Backup location configurable
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-🔒 HARDWARE-LOCKED ACTIVATION
-
-Secure license system:
-• License bound to your PC hardware
-• Prevents unauthorized sharing
-• Online validation via secure API
-• Automatic renewal checking
-• Grace period for expiration
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-🔔 SYSTEM TRAY INTEGRATION
-
-Runs unobtrusively in background:
-• Minimize to tray (click X)
-• Quick access menu
-• Status indicators
-• Scan on demand
-• Easy exit option
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-🔄 AUTOMATIC UPDATES
-
-Stay protected with latest version:
-• Update checker on startup
-• Download link provided
-• Version comparison
-• Change log available
-• Optional manual check
-
-"""
-        text.insert("1.0", content)
-        text.config(state="disabled")
-
-    def _create_faq_tab(self):
-        """FAQ tab with common questions."""
-        tab = tk.Frame(self.notebook, bg="white")
-        self.notebook.add(tab, text="❓ FAQ")
-        
-        container = tk.Frame(tab, bg="white")
-        container.pack(fill="both", expand=True, padx=20, pady=15)
-        
-        text = scrolledtext.ScrolledText(
-            container,
-            wrap=tk.WORD,
-            font=("Arial", 11),
-            bg="white",
-            fg="#222",
-            relief="flat",
-            padx=15,
-            pady=15
-        )
-        text.pack(fill="both", expand=True)
-        
-        content = """
-❓ FREQUENTLY ASKED QUESTIONS
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Q: How do I close VWAR Scanner?
-A: Click the "Quit VWAR" button in the sidebar (bottom red button). 
-   Clicking the X button minimizes to system tray instead of closing.
-   This keeps your protection running in the background.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Q: Why does VWAR need administrator rights?
-A: Administrator rights are required to:
-   • Monitor system-wide file changes
-   • Move files to/from quarantine
-   • Access all drives and folders
-   • Start system-level monitoring service
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Q: What if VWAR detects a false positive?
-A: If a legitimate file is quarantined:
-   1. Go to "Scan Vault" page
-   2. Find the file in quarantine list
-   3. Select it and click "Restore"
-   4. VWAR will re-scan on restore
-   5. If still detected, contact support
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Q: How do I schedule automatic scans?
-A: Go to "Schedule Scan" page:
-   1. Choose frequency (Hourly, Daily, or Custom)
-   2. Set time using hour/minute spinboxes
-   3. Add paths to scan (click +Dir button)
-   4. Enable "Include Subdirectories" if needed
-   5. Click "Save"
-   6. Use "Run Now" to test immediately
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Q: Does VWAR slow down my computer?
-A: VWAR is designed for minimal impact:
-   • Uses efficient C++ monitor
-   • Scans run in background thread
-   • Only active during file operations
-   • Typical CPU usage: <2%
-   • Memory usage: ~50-100MB
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Q: How often should I scan my computer?
-A: Real-time protection is always active, but we recommend:
-   • Daily scan: For average users
-   • Twice daily: For heavy downloaders
-   • Weekly full scan: For complete peace of mind
-   • After visiting suspicious websites
-   • Before opening email attachments
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Q: What happens when my license expires?
-A: When license expires:
-   • You'll see warnings 7 days before expiration
-   • Scanning will be disabled after expiration
-   • You can still view quarantine
-   • Contact support to renew: support@bobosohomail.com
-   • License validation happens every 6 hours
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Q: How many devices can I use with one license?
-A: 🔹 Each license key supports up to 2 devices:
-   • Device Slot 1: First device activation
-   • Device Slot 2: Second device activation
-   • Auto-allocation: System automatically assigns slots
-   • Device limit: Maximum 2 devices per license
-   • To use on a 3rd device: Deactivate one existing device first
-   • Contact support to manage devices: support@bobosohomail.com
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Q: Can I use VWAR with other antivirus software?
-A: Yes! VWAR is designed to complement existing security:
-   • Works alongside Windows Defender
-   • Compatible with most antivirus software
-   • Provides additional YARA-based detection
-   • ScanVault adds extra protection layer
-   • No conflicts with other security tools
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Q: Where are quarantined files stored?
-A: Quarantined files are in:
-   • Folder: VWAR_exe_2/quarantine/
-   • Files are renamed with timestamp
-   • Metadata stored in .meta files
-   • Safe to delete entire folder contents
-   • Automatic cleanup not implemented (manual only)
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Q: How do I update VWAR Scanner?
-A: VWAR checks for updates on startup:
-   1. If update available, you'll see notification
-   2. Click "Update Available" button
-   3. Download latest version from GitHub
-   4. Close VWAR
-   5. Replace VWAR.exe with new version
-   6. Restart VWAR
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Q: Can I exclude certain files/folders from scanning?
-A: Yes! VWAR automatically excludes:
-   • System folders (Windows, Program Files)
-   • Recycle Bin
-   • Temporary files
-   • VWAR's own folders
-   Future update will add custom exclusions.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Q: What is Installation Mode?
-A: 🔧 Installation Mode temporarily disables ScanVault for installer files:
-   
-   When to use:
-   • Installing new software
-   • Installing Windows updates
-   • Running legitimate installers
-   
-   How it works:
-   • Activate from "Scan Vault" page (orange button)
-   • Active for 10 minutes (auto-deactivates)
-   • Skips installer files (.msi, .exe, .dll, .sys, etc.)
-   • Skips files in trusted installer folders
-   • Regular files still scanned normally
-   
-   What gets skipped:
-   ✓ Windows Installer folder files
-   ✓ Windows Update files
-   ✓ System installer directories
-   ✓ User-defined trusted folders (future update)
-   
-   Timer display:
-   • Shows countdown: "Installation Mode: ON (09:45)"
-   • Auto-deactivates when timer reaches 00:00
-   • Click button again to deactivate early
-   
-   Note: Installation Mode reduces false positives during software installation
-         without compromising your overall protection.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Q: What file types does VWAR scan?
-A: VWAR scans all files except:
-   • System files (*.sys, *.dll in system folders)
-   • Temporary files (*.tmp, *.log)
-   • Partial downloads (*.crdownload, *.part)
-   • VWAR's own files
-   • Installer files (when Installation Mode active)
-   All other files are checked for threats.
-
-"""
-        text.insert("1.0", content)
-        text.config(state="disabled")
-
-    def _create_troubleshooting_tab(self):
-        """Troubleshooting tab with problem solutions."""
-        tab = tk.Frame(self.notebook, bg="white")
-        self.notebook.add(tab, text="🔧 Troubleshooting")
-        
-        container = tk.Frame(tab, bg="white")
-        container.pack(fill="both", expand=True, padx=20, pady=15)
-        
-        text = scrolledtext.ScrolledText(
-            container,
-            wrap=tk.WORD,
-            font=("Arial", 11),
-            bg="white",
-            fg="#222",
-            relief="flat",
-            padx=15,
-            pady=15
-        )
-        text.pack(fill="both", expand=True)
-        
-        content = """
-🔧 TROUBLESHOOTING GUIDE
-
-Common issues and solutions:
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-PROBLEM: VWAR won't start or crashes on startup
-
-Solutions:
-□ Run as Administrator (Right-click → Run as administrator)
-□ Check if VWAR.exe is the correct filename
-□ Verify Python 3.11.5+ is installed
-□ Reinstall dependencies: pip install -r requirements.txt
-□ Check antivirus isn't blocking VWAR
-□ Look for error messages in console window
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-PROBLEM: "Activation file not found" error
-
-Solutions:
-□ You need a valid license key
-□ Contact support@bobosohomail.com for activation
-□ Ensure data/ folder exists in VWAR directory
-□ Don't delete activation.enc file
-□ Check if activation was successful
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-PROBLEM: Real-time monitoring not working
-
-Solutions:
-□ Ensure VWAR has administrator rights
-□ Check if monitoring toggle is ON (green)
-□ Verify vwar_monitor.exe exists
-□ Look for C++ monitor in Task Manager
-□ Restart VWAR as administrator
-□ Check if Windows Defender is blocking
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-PROBLEM: System tray icon not appearing
-
-Solutions:
-□ Check Windows tray settings (Show hidden icons)
-□ Verify pywin32 is installed: pip install pywin32
-□ Restart VWAR
-□ Check if tray icon is in overflow area
-□ Look for error messages about tray
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-PROBLEM: Scans are very slow
-
-Solutions:
-□ Reduce scan paths (don't scan entire drives)
-□ Exclude large folders (videos, games)
-□ Check if other antivirus is scanning simultaneously
-□ Ensure SSD/HDD is healthy (check SMART status)
-□ Close other resource-intensive programs
-□ Wait for initial scan to complete (first scan is slowest)
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-PROBLEM: License expired message
-
-Solutions:
-□ Check "Valid Till" date on Home page
-□ Contact support for renewal
-□ Ensure internet connection is active
-□ Don't modify system date/time
-□ License validation happens every 6 hours
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-PROBLEM: False positive detections
-
-Solutions:
-□ Restore file from Scan Vault page
-□ File will be re-scanned on restore
-□ Report false positive to support
-□ Check if file is from trusted source
-□ Verify file with VirusTotal.com
-□ Future update will add exclusion list
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-PROBLEM: Can't restore quarantined file
-
-Solutions:
-□ Ensure file still exists in quarantine folder
-□ Check if .meta file is present
-□ Run VWAR as administrator
-□ Manually copy from quarantine/ folder
-□ Contact support if issue persists
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-PROBLEM: High CPU or memory usage
-
-Solutions:
-□ Normal during active scanning
-□ Check if stuck on a large file
-□ Restart VWAR
-□ Reduce scheduled scan frequency
-□ Close other programs
-□ Check Windows Task Manager for conflicts
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-PROBLEM: Schedule scan not running
-
-Solutions:
-□ Verify schedule is saved (check Last Run time)
-□ Ensure VWAR is running (not closed)
-□ Check if paths exist
-□ Set realistic time (not in the past)
-□ Use "Run Now" to test manually
-□ Check console for error messages
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-PROBLEM: Updates not detecting
-
-Solutions:
-□ Check internet connection
-□ Verify GitHub is accessible
-□ Look for update notification on Home page
-□ Manually check: https://github.com/AnindhaxNill/VWAR-release
-□ Contact support if stuck on old version
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-STILL HAVING ISSUES?
-
-If none of these solutions work:
-
-1. Check console output for error messages
-2. Collect logs from data/ folder
-3. Note exact error message
-4. Contact support with details
-5. Email: support@bobosohomail.com
-6. Website: http://www.bitss.one
-7. Include VWAR version and Windows version
-
-"""
-        text.insert("1.0", content)
-        text.config(state="disabled")
-
-    def _create_contact_tab(self):
-        """Contact tab with support information."""
-        tab = tk.Frame(self.notebook, bg="white")
-        self.notebook.add(tab, text="📧 Contact")
-        
-        container = tk.Frame(tab, bg="white")
-        container.pack(fill="both", expand=True, padx=40, pady=30)
+        # Main content area
+        content_frame = tk.Frame(self, bg="#ffffff", relief="ridge", borderwidth=2)
+        content_frame.pack(fill="both", expand=True, padx=20, pady=20)
         
         # Title
-        title = tk.Label(
-            container,
-            text="📧 Contact & Support",
-            font=("Arial", 18, "bold"),
-            bg="white",
-            fg="#009AA5"
-        )
-        title.pack(pady=(0, 20))
-        
-        # Company info box
-        info_frame = tk.Frame(container, bg="#f0f8ff", relief="solid", borderwidth=1)
-        info_frame.pack(fill="x", pady=10)
-        
-        tk.Label(
-            info_frame,
-            text="🏢 Developer: Bitss.one",
-            font=("Arial", 14, "bold"),
-            bg="#f0f8ff",
+        title_label = tk.Label(
+            content_frame,
+            text="📚 BITSS VWAR User Manual",
+            font=("Arial", 24, "bold"),
+            bg="#ffffff",
             fg="#004d4d"
-        ).pack(anchor="w", padx=20, pady=(15, 5))
-        
-        tk.Label(
-            info_frame,
-            text="🌐 Website: http://www.bitss.one",
-            font=("Arial", 12),
-            bg="#f0f8ff",
-            fg="#007777",
-            cursor="hand2"
-        ).pack(anchor="w", padx=20, pady=5)
-        
-        tk.Label(
-            info_frame,
-            text="📧 Email: support@bobosohomail.com",
-            font=("Arial", 12),
-            bg="#f0f8ff",
-            fg="#007777",
-            cursor="hand2"
-        ).pack(anchor="w", padx=20, pady=5)
-        
-        tk.Label(
-            info_frame,
-            text=f"📦 Version: {self._get_version()}",
-            font=("Arial", 12),
-            bg="#f0f8ff",
-            fg="#004d4d"
-        ).pack(anchor="w", padx=20, pady=(5, 15))
-        
-        # Support info
-        support_text = tk.Text(
-            container,
-            wrap=tk.WORD,
-            font=("Arial", 11),
-            bg="white",
-            fg="#333",
-            relief="flat",
-            height=15
         )
-        support_text.pack(fill="both", expand=True, pady=20)
+        title_label.pack(pady=30)
         
-        support_content = """
+        # Description
+        desc_label = tk.Label(
+            content_frame,
+            text="Complete guide with step-by-step instructions and screenshots\n"
+                 "Available in English and French",
+            font=("Arial", 12),
+            bg="#ffffff",
+            fg="#555555",
+            justify="center"
+        )
+        desc_label.pack(pady=10)
+        
+        # PDF Buttons Frame
+        pdf_frame = tk.Frame(content_frame, bg="#ffffff")
+        pdf_frame.pack(pady=40)
+        
+        # Find PDF files
+        english_pdf = self._find_pdf("English")
+        french_pdf = self._find_pdf("French")
+        
+        # English PDF Button
+        if english_pdf:
+            english_btn = tk.Button(
+                pdf_frame,
+                text="📄 Open English User Manual",
+                command=lambda: self._open_pdf(english_pdf, "English"),
+                bg="#007777",
+                fg="white",
+                font=("Arial", 14, "bold"),
+                padx=30,
+                pady=15,
+                relief="raised",
+                cursor="hand2",
+                borderwidth=3
+            )
+            english_btn.pack(pady=10)
+            
+            # Show file info
+            file_size = self._get_file_size(english_pdf)
+            tk.Label(
+                pdf_frame,
+                text=f"File: {os.path.basename(english_pdf)} ({file_size})",
+                font=("Arial", 9),
+                bg="#ffffff",
+                fg="#666666"
+            ).pack()
+        
+        # French PDF Button
+        if french_pdf:
+            french_btn = tk.Button(
+                pdf_frame,
+                text="📄 Ouvrir le Manuel Utilisateur Français",
+                command=lambda: self._open_pdf(french_pdf, "French"),
+                bg="#007777",
+                fg="white",
+                font=("Arial", 14, "bold"),
+                padx=30,
+                pady=15,
+                relief="raised",
+                cursor="hand2",
+                borderwidth=3
+            )
+            french_btn.pack(pady=10)
+            
+            # Show file info
+            file_size = self._get_file_size(french_pdf)
+            tk.Label(
+                pdf_frame,
+                text=f"Fichier: {os.path.basename(french_pdf)} ({file_size})",
+                font=("Arial", 9),
+                bg="#ffffff",
+                fg="#666666"
+            ).pack()
+        
+        # Warning if no PDFs found
+        if not english_pdf and not french_pdf:
+            tk.Label(
+                pdf_frame,
+                text="⚠️ User manual PDFs not found\n"
+                     "Please contact support: support@bobosohomail.com",
+                font=("Arial", 12, "bold"),
+                bg="#ffffff",
+                fg="#cc0000",
+                justify="center"
+            ).pack(pady=20)
+        
+        # Separator
+        separator = tk.Frame(content_frame, bg="#cccccc", height=2)
+        separator.pack(fill="x", padx=50, pady=30)
+        
+        # Quick Links Section
+        links_title = tk.Label(
+            content_frame,
+            text="📞 Need More Help?",
+            font=("Arial", 16, "bold"),
+            bg="#ffffff",
+            fg="#004d4d"
+        )
+        links_title.pack(pady=10)
+        
+        links_frame = tk.Frame(content_frame, bg="#ffffff")
+        links_frame.pack(pady=10)
+        
+        # Support Info
+        support_info = [
+            ("🌐 Website:", "http://www.bitss.one"),
+            ("📧 Support Email:", "support@bobosohomail.com"),
+            ("🏢 Developer:", "Bitss.one"),
+        ]
+        
+        for label_text, value_text in support_info:
+            row = tk.Frame(links_frame, bg="#ffffff")
+            row.pack(pady=5)
+            tk.Label(row, text=label_text, font=("Arial", 11, "bold"),
+                    bg="#ffffff", fg="#004d4d").pack(side="left", padx=5)
+            tk.Label(row, text=value_text, font=("Arial", 11),
+                    bg="#ffffff", fg="#007777").pack(side="left")
+        
+        # Version info
+        version_label = tk.Label(
+            content_frame,
+            text=f"VWAR Version {self._get_version()}",
+            font=("Arial", 10),
+            bg="#ffffff",
+            fg="#999999"
+        )
+        version_label.pack(pady=20)
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-📞 SUPPORT HOURS
-
-Monday - Friday: 9:00 AM - 6:00 PM (GMT)
-Saturday: 10:00 AM - 4:00 PM (GMT)
-Sunday: Closed
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-📧 EMAIL SUPPORT
-
-For technical support, license inquiries, or bug reports:
-support@bobosohomail.com
-
-Please include:
-• VWAR version number
-• Windows version
-• Detailed description of issue
-• Screenshots if applicable
-• Steps to reproduce the problem
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-🔑 LICENSE INQUIRIES
-
-For new licenses or renewals:
-• Visit: http://www.bitss.one
-• Email: support@bobosohomail.com
-• Include your hardware ID (shown on activation screen)
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-🐛 BUG REPORTS
-
-Found a bug? Help us improve:
-1. Note the exact error message
-2. Describe what you were doing
-3. Check if it's repeatable
-4. Email details to support
-5. Include log files if available
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-💡 FEATURE REQUESTS
-
-Have an idea for improvement?
-We'd love to hear it! Email your suggestions to:
-support@bobosohomail.com
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-🌟 Thank you for using VWAR Scanner!
-Your security is our priority.
-
-"""
-        support_text.insert("1.0", support_content)
-        support_text.config(state="disabled")
-
+    def _find_pdf(self, language):
+        """Find PDF file for specified language (English or French).
+        
+        Args:
+            language: "English" or "French"
+            
+        Returns:
+            Full path to PDF file or None if not found
+        """
+        # Check in assets folder
+        assets_dir = resource_path("assets")
+        
+        print(f"[HELP] Searching for {language} PDF in: {assets_dir}")
+        print(f"[HELP] Assets folder exists: {os.path.exists(assets_dir)}")
+        
+        # Try to find PDF with language keyword in filename
+        try:
+            if os.path.exists(assets_dir):
+                files = os.listdir(assets_dir)
+                print(f"[HELP] Files in assets folder: {files}")
+                
+                for filename in files:
+                    if filename.lower().endswith('.pdf'):
+                        print(f"[HELP] Found PDF: {filename}")
+                        if language.lower() in filename.lower():
+                            full_path = os.path.join(assets_dir, filename)
+                            print(f"[HELP] Matched {language} PDF: {full_path}")
+                            if os.path.exists(full_path):
+                                print(f"[HELP] Returning PDF path: {full_path}")
+                                return full_path
+            else:
+                print(f"[HELP] Assets folder does not exist: {assets_dir}")
+        except Exception as e:
+            print(f"[HELP] Error searching for {language} PDF: {e}")
+            import traceback
+            traceback.print_exc()
+        
+        print(f"[HELP] No {language} PDF found")
+        return None
+    
+    def _open_pdf_external(self, pdf_path, language):
+        """Open PDF file with default PDF viewer (fallback method).
+        
+        Args:
+            pdf_path: Full path to PDF file
+            language: Language name for display
+        """
+        try:
+            if not os.path.exists(pdf_path):
+                messagebox.showerror(
+                    "File Not Found",
+                    f"The {language} user manual could not be found:\n{pdf_path}"
+                )
+                return
+            
+            # Open with default PDF viewer
+            os.startfile(pdf_path)
+            print(f"[HELP] Opened {language} PDF externally: {pdf_path}")
+            
+        except Exception as e:
+            messagebox.showerror(
+                "Error Opening PDF",
+                f"Failed to open {language} user manual:\n{str(e)}\n\n"
+                f"Please open the file manually:\n{pdf_path}"
+            )
+            print(f"[HELP] Error opening PDF: {e}")
+    
+    def _get_file_size(self, file_path):
+        """Get human-readable file size.
+        
+        Args:
+            file_path: Full path to file
+            
+        Returns:
+            Formatted size string (e.g., "2.5 MB")
+        """
+        try:
+            size_bytes = os.path.getsize(file_path)
+            
+            # Convert to appropriate unit
+            for unit in ['B', 'KB', 'MB', 'GB']:
+                if size_bytes < 1024.0:
+                    return f"{size_bytes:.1f} {unit}"
+                size_bytes /= 1024.0
+            
+            return f"{size_bytes:.1f} TB"
+        except Exception:
+            return "Unknown size"
+    
     def _get_version(self):
         """Get current VWAR version."""
         try:
-            from utils.update_checker import CURRENT_VERSION
+            from config import CURRENT_VERSION
             return CURRENT_VERSION
-        except:
+        except Exception:
             return "3.0.0"
-
-    def _open_file(self, path):
-        """Open file with default application."""
-        try:
-            os.startfile(path)  # Windows: opens with default app
-        except Exception:
-            pass
-
-    def _open_folder(self, folder):
-        """Open folder in Windows Explorer."""
-        try:
-            os.startfile(folder)
-        except Exception:
-            pass
-
-    def _find_guides(self):
-        """Find guide files robustly.
-
-        Priority:
-        1) Known common filenames in assets/ then root
-        2) Otherwise, newest *.pdf found in assets/ then root
-        """
-        def exists(p: str) -> bool:
-            try:
-                return os.path.exists(p)
-            except Exception:
-                return False
-
-        def fmt_mtime(p: str) -> str:
-            try:
-                return datetime.fromtimestamp(os.path.getmtime(p)).strftime("%Y-%m-%d %H:%M")
-            except Exception:
-                return "unknown"
-
-        # 1) Try known filenames
-        known_candidates = []
-        for name in self.COMMON_FILENAMES:
-            known_candidates.append(resource_path(os.path.join("assets", name)))
-            known_candidates.append(resource_path(name))
-
-        pdf_path = next((p for p in known_candidates if p.lower().endswith('.pdf') and exists(p)), None)
-        docx_path = None
-
-        # 2) Fallback to newest match by extension
-        def newest_with_ext(exts):
-            found = []
-            for base in (resource_path("assets"), resource_path(".")):
-                try:
-                    for fname in os.listdir(base):
-                        if any(fname.lower().endswith(e) for e in exts):
-                            full = os.path.join(base, fname)
-                            if exists(full):
-                                try:
-                                    found.append((os.path.getmtime(full), full))
-                                except Exception:
-                                    found.append((0, full))
-                except Exception:
-                    continue
-            if not found:
-                return None
-            found.sort(reverse=True)
-            return found[0][1]
-
-        if not pdf_path:
-            pdf_path = newest_with_ext(['.pdf'])
-
-        return {
-            "pdf": pdf_path,
-            "pdf_name": (os.path.basename(pdf_path) if pdf_path else None),
-            "pdf_mtime": (fmt_mtime(pdf_path) if pdf_path else None),
-        }

@@ -173,7 +173,7 @@ class TrayIcon:
         self.stop()
 
 
-def create_tray(on_restore: Callable[[], None], on_exit: Callable[[], None], icon_path: Optional[str], tooltip: str = "VWAR Scanner", on_scan_now: Optional[Callable[[], None]] = None) -> Optional[TrayIcon]:
+def create_tray(on_restore: Callable[[], None], on_exit: Callable[[], None], icon_path: Optional[str], tooltip: str = "VWAR", on_scan_now: Optional[Callable[[], None]] = None) -> Optional[TrayIcon]:
     tray = TrayIcon(tooltip, icon_path, on_restore, on_exit, on_scan_now=on_scan_now)
     if tray.start():
         return tray

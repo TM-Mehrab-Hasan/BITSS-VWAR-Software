@@ -1,8 +1,8 @@
 [Setup]
-AppName=VWAR Scanner
+AppName=VWAR
 AppVersion=3.0.0
-DefaultDirName={pf}\VWARScanner
-DefaultGroupName=VWARScanner
+DefaultDirName={pf}\VWAR
+DefaultGroupName=VWAR
 OutputBaseFilename=VWAR_Installer
 LicenseFile="G:\Ratul\Job\BFIN IT\Versions\Bitss\BITSS-VWAR-Software\VWAR_i\license.txt"
 PrivilegesRequired=admin
@@ -10,34 +10,43 @@ DisableProgramGroupPage=yes
 Compression=lzma
 SolidCompression=yes
 SetupIconFile="G:\Ratul\Job\BFIN IT\Versions\Bitss\BITSS-VWAR-Software\VWAR_i\assets\VWAR.ico"
+; Multi-language support
+ShowLanguageDialog=yes
 
+[Languages]
+Name: "english"; MessagesFile: "compiler:Default.isl"
+Name: "french"; MessagesFile: "compiler:Languages\French.isl"
 
 [Files]
 Source: "G:\Ratul\Job\BFIN IT\Versions\Bitss\BITSS-VWAR-Software\VWAR_i\VWAR.exe"; DestDir: "{app}"; DestName: "VWAR.exe"; Flags: ignoreversion
 Source: "G:\Ratul\Job\BFIN IT\Versions\Bitss\BITSS-VWAR-Software\VWAR_i\assets\VWAR.ico"; DestDir: "{app}\assets"; Flags: ignoreversion
-Source: "G:\Ratul\Job\BFIN IT\Versions\Bitss\BITSS-VWAR-Software\VWAR_i\Vwar User Manual.pdf"; DestDir: "{app}"; Flags: ignoreversion
+; YARA rules folders - CRITICAL for scanning functionality
+Source: "G:\Ratul\Job\BFIN IT\Versions\Bitss\BITSS-VWAR-Software\VWAR_i\assets\yara\*"; DestDir: "{app}\assets\yara"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Language-specific user manuals - installed in assets folder for application to find
+Source: "G:\Ratul\Job\BFIN IT\Versions\Bitss\BITSS-VWAR-Software\VWAR_i\assets\English copy of BITSS VWAR USER Manual.pdf"; DestDir: "{app}\assets"; Flags: ignoreversion
+Source: "G:\Ratul\Job\BFIN IT\Versions\Bitss\BITSS-VWAR-Software\VWAR_i\assets\French copy of BITSS VWAR USER Manual.pdf"; DestDir: "{app}\assets"; Flags: ignoreversion
 ; Use the repository's top-level 'vwar_monitor' folder as the source for the
 ; native executable rather than a hard-coded absolute path.
 Source: "G:\Ratul\Job\BFIN IT\Versions\Bitss\BITSS-VWAR-Software\VWAR_i\vwar_monitor\vwar_monitor.exe"; DestDir: "{app}\vwar_monitor"; DestName: "vwar_monitor.exe"; Flags: ignoreversion
 
 [Icons]
-Name: "{commondesktop}\VWAR Scanner"; Filename: "{app}\VWAR.exe"; IconFilename: "{app}\assets\VWAR.ico"
-Name: "{userstartup}\VWAR Scanner"; Filename: "{app}\VWAR.exe"; IconFilename: "{app}\assets\VWAR.ico"
+Name: "{commondesktop}\VWAR"; Filename: "{app}\VWAR.exe"; IconFilename: "{app}\assets\VWAR.ico"
+Name: "{userstartup}\VWAR"; Filename: "{app}\VWAR.exe"; IconFilename: "{app}\assets\VWAR.ico"
 [Run]
 ; ✅ Create a scheduled task to auto-run VWAR at startup with admin rights
 Filename: "schtasks"; \
-  Parameters: "/Create /TN ""VWARScanner"" /TR """"{app}\VWAR.exe"""" /SC ONLOGON /RL HIGHEST /F"; \
+  Parameters: "/Create /TN ""VWAR"" /TR """"{app}\VWAR.exe"""" /SC ONLOGON /RL HIGHEST /F"; \
   Flags: runhidden runascurrentuser; \
   StatusMsg: "Registering VWAR to run at startup with administrator access..."
 
 ; ✅ Optionally run VWAR right after install
-Filename: "{app}\VWAR.exe"; Description: "Launch VWAR Scanner"; \
+Filename: "{app}\VWAR.exe"; Description: "Launch VWAR"; \
   Flags: nowait postinstall skipifsilent
 
 [UninstallRun]
 ; ✅ Remove the scheduled task on uninstall
 Filename: "schtasks"; \
-  Parameters: "/Delete /TN ""VWARScanner"" /F"; \
+  Parameters: "/Delete /TN ""VWAR"" /F"; \
   Flags: runhidden runascurrentuser; \
   StatusMsg: "Removing VWAR startup task..."
 
@@ -50,7 +59,7 @@ Filename: "schtasks"; \
 // function InitializeSetup(): Boolean;
 // begin
   // if IsVWARRunning() then begin
-    // MsgBox('VWAR Scanner is currently running. Please close it before installing.', mbError, MB_OK);
+    // MsgBox('VWAR is currently running. Please close it before installing.', mbError, MB_OK);
     // Result := False;
   // end else begin
     // Result := True;
@@ -80,7 +89,7 @@ end;
 function InitializeSetup(): Boolean;
 begin
   if IsVWARProcessRunning() then begin
-    MsgBox('VWAR Scanner is currently running. Please close it before installing.', mbError, MB_OK);
+    MsgBox('VWAR is currently running. Please close it before installing.', mbError, MB_OK);
     Result := False;
   end else
     Result := True;
@@ -89,7 +98,7 @@ end;
 function InitializeUninstall(): Boolean;
 begin
   if IsVWARProcessRunning() then begin
-    MsgBox('VWAR Scanner is currently running. Please close it before uninstalling.', mbError, MB_OK);
+    MsgBox('VWAR is currently running. Please close it before uninstalling.', mbError, MB_OK);
     Result := False;
   end else
     Result := True;

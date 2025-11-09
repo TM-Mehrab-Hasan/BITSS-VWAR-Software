@@ -159,7 +159,7 @@ def main():
     parser.add_argument("--no-admin", action="store_true", help="Skip admin check (dev mode)")
     args, unknown = parser.parse_known_args()
     if args.help:
-        print("VWAR Scanner options:\n  --silent   Run background services only (monitor, scheduler)\n  --tray     Start to system tray; GUI shown when icon clicked\n  --no-admin Skip admin elevation (for development)\n  --help     Show this help")
+        print("VWAR options:\n  --silent   Run background services only (monitor, scheduler)\n  --tray     Start to system tray; GUI shown when icon clicked\n  --no-admin Skip admin elevation (for development)\n  --help     Show this help")
         return
     # check_exe_name()
     
@@ -167,7 +167,7 @@ def main():
     if not args.no_admin and already_running():
         root = tk.Tk()
         root.withdraw()
-        messagebox.showinfo("VWAR Scanner", "VWAR is already running.")
+        messagebox.showinfo("VWAR", "VWAR is already running.")
         sys.exit()
 
     # Step 1: Elevate to admin (skip if --no-admin flag or running from Python directly)
@@ -206,7 +206,7 @@ def main():
             return
     else:
         # Normal mode: Create GUI with system tray integration
-        print("[INFO] Launching VWAR Scanner GUI with system tray...")
+        print("[INFO] Launching VWAR GUI with system tray...")
         root = tk.Tk()
         
         # Start minimized to tray if --tray flag is set
@@ -240,7 +240,7 @@ def main():
             # Send toast notification (once per day)
             try:
                 notify("⏰ License Expiring Soon", 
-                       f"Your license expires in {days_left} day(s).\nPlease renew to continue using VWAR Scanner.")
+                       f"Your license expires in {days_left} day(s).\nPlease renew to continue using VWAR.")
             except Exception:
                 pass
         
