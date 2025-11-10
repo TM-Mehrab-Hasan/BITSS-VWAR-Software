@@ -34,7 +34,9 @@ class VWARScannerGUI:
         self.root.configure(bg="#009AA5")
 
         # Start background services (auto backup scheduler)
-        AutoBackupScheduler().start()
+        # AutoBackupScheduler().start()
+        self.auto_backup = AutoBackupScheduler()
+        self.auto_backup.start()
 
         # Shared state / attributes
         self.pages = {}
