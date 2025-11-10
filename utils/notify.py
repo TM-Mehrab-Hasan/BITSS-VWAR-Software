@@ -155,3 +155,83 @@ def notify(title: str, message: str, duration: int = 10) -> bool:
 
         log_message("[NOTIFY] All backends failed; falling back to log only")
         return False
+
+
+def show_app_notification(root, title: str, message: str, duration: int = 5000, 
+                          bg_color: str = "#009AA5", title_color: str = "white"):
+    """
+    Show an animated slide-in notification inside the app (alternative to system notifications).
+    
+    Args:
+        root: Tkinter root window
+        title: Notification title
+        message: Notification message
+        duration: Time to display in milliseconds (default 5000ms = 5s)
+        bg_color: Background color (default teal theme)
+        title_color: Title text color
+    
+    ✨ Features smooth slide-in from bottom-right with fade-out animation.
+    """
+    try:
+        from tkinter import Toplevel, Label, Frame
+        
+        # Create notification window (no border, always on top)
+        notif = Toplevel(root)
+        notif.overrideredirect(True)
+        notif.attributes("-topmost", True)
+        notif.config(bg=bg_color)
+        
+        # Content frame
+        content = Frame(notif, bg=bg_color, bd=2, relief="raised")
+        content.pack(fill="both", expand=True, padx=2, pady=2)
+        
+        # Title label
+        Label(content, text=title, font=("Arial", 12, "bold"),
+              bg=bg_color, fg=title_color).pack(anchor="w", padx=10, pady=(8, 2))
+        
+        # Message label
+        Label(content, text=message, font=("Arial", 10),
+              bg=bg_color, fg="white", wraplength=280, justify="left").pack(anchor="w", padx=10, pady=(2, 8))
+        
+        # Calculate position (bottom-right corner)
+        notif.update_idletasks()
+        width = 320
+        height = notif.winfo_reqheight()
+        screen_width = notif.winfo_screenwidth()
+        screen_height = notif.winfo_screenheight()
+        
+        # Start position (off-screen to the right)
+        start_x = screen_width
+        end_x = screen_width - width - 20
+        y = screen_height - height - 60
+        
+        notif.geometry(f"{width}x{height}+{start_x}+{y}")
+        
+        # ✨ Slide-in animation (smooth 20-step movement)
+        def slide_in(step=0):
+            if step < 20:
+                current_x = start_x + int((end_x - start_x) * (step / 20))
+                notif.geometry(f"{width}x{height}+{current_x}+{y}")
+                root.after(15, lambda: slide_in(step + 1))  # 15ms per frame = 300ms total
+            else:
+                # After slide-in complete, schedule fade-out
+                root.after(duration, lambda: fade_out(notif, 1.0))
+        
+        # ✨ Fade-out animation (opacity reduction)
+        def fade_out(window, alpha):
+            try:
+                if alpha > 0:
+                    window.attributes("-alpha", alpha)
+                    root.after(50, lambda: fade_out(window, alpha - 0.1))  # 50ms per step
+                else:
+                    window.destroy()
+            except Exception:
+                pass  # Window already destroyed
+        
+        # Start animation
+        slide_in()
+        
+        return True
+    except Exception as e:
+        log_message(f"[APP_NOTIFY] Failed to show notification: {e}")
+        return False

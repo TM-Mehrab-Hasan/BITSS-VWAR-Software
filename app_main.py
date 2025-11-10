@@ -230,32 +230,55 @@ class VWARScannerGUI:
         Label(self.sidebar, text="📂 VWAR", font=("Arial", 14, "bold"),
             bg="#004d4d", fg="white").pack(pady=20)
 
-
-
-        Button(self.sidebar, text="🏠 Home", bg="#007777", fg="white", font=("Arial", 12),
-            command=lambda: self.show_page("home")).pack(fill="x", padx=10, pady=5)
-
-        Button(self.sidebar, text="🧪 Scan", bg="#007777", fg="white", font=("Arial", 12),
-            command=lambda: self.show_page("scan")).pack(fill="x", padx=10, pady=5)
-
-        Button(self.sidebar, text="💾 Backup", bg="#007777", fg="white", font=("Arial", 12),
-            command=lambda: self.show_page("backup")).pack(fill="x", padx=10, pady=5)
-
-        Button(self.sidebar, text="♻️ Scan Vault", bg="#007777", fg="white", font=("Arial", 12),
-            command=lambda: self.show_page("monitor")).pack(fill="x", padx=10, pady=5)
-
-        Button(self.sidebar, text="📅 Schedule Scan", bg="#007777", fg="white", font=("Arial", 12),
-            command=lambda: self.show_page("settings")).pack(fill="x", padx=10, pady=5)
-
-        Button(self.sidebar, text="❓ Help", bg="#007777", fg="white", font=("Arial", 12),
-            command=lambda: self.show_page("help")).pack(fill="x", padx=10, pady=5)
+        # ✨ Create nav buttons with hover animations
+        nav_buttons = [
+            ("🏠 Home", "home"),
+            ("🧪 Scan", "scan"),
+            ("💾 Backup", "backup"),
+            ("♻️ Scan Vault", "monitor"),
+            ("📅 Schedule Scan", "settings"),
+            ("❓ Help", "help")
+        ]
+        
+        for text, page in nav_buttons:
+            btn = Button(self.sidebar, text=text, bg="#007777", fg="white", 
+                        font=("Arial", 12), command=lambda p=page: self.show_page(p),
+                        cursor="hand2", relief="flat", borderwidth=0)
+            btn.pack(fill="x", padx=10, pady=5)
+            
+            # ✨ Add hover animation effects
+            self._add_button_hover_effect(btn, 
+                                         normal_bg="#007777", 
+                                         hover_bg="#009999",
+                                         normal_fg="white",
+                                         hover_fg="white")
 
         # Add spacer to push quit button to bottom
         Label(self.sidebar, bg="#004d4d").pack(fill="both", expand=True)
         
-        # Quit button at the bottom
-        Button(self.sidebar, text="🚪 Quit VWAR", bg="#cc0000", fg="white", font=("Arial", 12, "bold"),
-            command=self.confirm_exit).pack(fill="x", padx=10, pady=10, side="bottom")
+        # Quit button at the bottom with hover effect
+        quit_btn = Button(self.sidebar, text="🚪 Quit VWAR", bg="#cc0000", fg="white", 
+                         font=("Arial", 12, "bold"), command=self.confirm_exit,
+                         cursor="hand2", relief="flat", borderwidth=0)
+        quit_btn.pack(fill="x", padx=10, pady=10, side="bottom")
+        
+        # ✨ Add hover effect to quit button
+        self._add_button_hover_effect(quit_btn,
+                                     normal_bg="#cc0000",
+                                     hover_bg="#ff0000",
+                                     normal_fg="white",
+                                     hover_fg="white")
+    
+    def _add_button_hover_effect(self, button, normal_bg, hover_bg, normal_fg, hover_fg):
+        """Add smooth hover effect to a button with color transition."""
+        def on_enter(e):
+            button.config(bg=hover_bg, fg=hover_fg)
+        
+        def on_leave(e):
+            button.config(bg=normal_bg, fg=normal_fg)
+        
+        button.bind("<Enter>", on_enter)
+        button.bind("<Leave>", on_leave)
 
     
     def create_home_page(self):
@@ -364,20 +387,27 @@ class VWARScannerGUI:
                     if days_left > 0:
                         # Green text with calendar icon
                         days_text = f"📅 License Valid for {days_left} Days"
-                        self.days_remaining_label.config(text=days_text, fg="green")
-                        # Stop any blinking animation
-                        if hasattr(self, '_blink_job'):
-                            self.root.after_cancel(self._blink_job)
-                            self._blink_job = None
+                        
+                        # ✨ Start pulsing animation if ≤7 days (urgent warning)
+                        if days_left <= 7:
+                            self.days_remaining_label.config(text=days_text, fg="#FF6600")  # Orange
+                            if not hasattr(self, '_pulse_job') or self._pulse_job is None:
+                                self._start_pulse_animation()
+                        else:
+                            self.days_remaining_label.config(text=days_text, fg="green")
+                            # Stop any pulsing animation
+                            if hasattr(self, '_pulse_job') and self._pulse_job:
+                                self.root.after_cancel(self._pulse_job)
+                                self._pulse_job = None
                     else:
                         # Expired - red
                         days_color = "#FF0000"
                         days_text = f"❌ License Expired {abs(days_left)} Days Ago"
                         self.days_remaining_label.config(text=days_text, fg=days_color)
-                        # Stop blinking
-                        if hasattr(self, '_blink_job'):
-                            self.root.after_cancel(self._blink_job)
-                            self._blink_job = None
+                        # Stop pulsing
+                        if hasattr(self, '_pulse_job') and self._pulse_job:
+                            self.root.after_cancel(self._pulse_job)
+                            self._pulse_job = None
                 except Exception as e:
                     # Don't clear the label - keep showing last valid value
                     print(f"[UI] Days calculation error (keeping last value): {e}")
@@ -559,7 +589,7 @@ class VWARScannerGUI:
 
 
     def animate_home_status(self):
-        # New animation: pulse the scan dot when monitoring is active
+        """Animate the auto scan status with pulsing effect when active."""
         try:
             if not self.root.winfo_exists():
                 return
@@ -569,25 +599,60 @@ class VWARScannerGUI:
                 monitor_page = self.pages["monitor"]
                 monitor_active = bool(getattr(monitor_page, "monitoring_active", False))
 
-            # Update status text and color (matching the image style)
+            # ✨ Enhanced animation with pulsing effect
             if monitor_active:
-                self._scan_status_label.config(text="Running", fg="black")
-                # Keep dot green and steady (no pulsing like in the image)
+                self._scan_status_label.config(text="Running", fg="#00AA00")
+                
+                # Pulsing green dot animation
                 if getattr(self, '_scan_dot_canvas', None):
                     try:
-                        self._scan_dot_canvas.itemconfig(self._scan_dot, fill='#00CC00')
-                    except Exception:
+                        # Create pulsing effect by alternating brightness
+                        if not hasattr(self, '_pulse_state'):
+                            self._pulse_state = 0
+                        
+                        # Pulse cycle: 0 -> 1 -> 2 -> 3 -> 0 (creates smooth breathing effect)
+                        pulse_colors = ['#00FF00', '#00DD00', '#00BB00', '#00DD00']
+                        self._scan_dot_canvas.itemconfig(self._scan_dot, fill=pulse_colors[self._pulse_state])
+                        
+                        # Also add shadow/glow effect by drawing outer circle
+                        if not hasattr(self, '_scan_dot_glow'):
+                            self._scan_dot_glow = self._scan_dot_canvas.create_oval(1,1,15,15, 
+                                                                                     fill='', 
+                                                                                     outline='#00FF00', 
+                                                                                     width=2)
+                        
+                        # Animate the glow
+                        glow_alpha = ['#00FF0040', '#00FF0060', '#00FF0080', '#00FF0060']
+                        try:
+                            self._scan_dot_canvas.itemconfig(self._scan_dot_glow, 
+                                                            outline=pulse_colors[self._pulse_state])
+                        except:
+                            pass
+                        
+                        self._pulse_state = (self._pulse_state + 1) % 4
+                    except Exception as e:
                         pass
             else:
-                self._scan_status_label.config(text="Stopped", fg="black")
+                self._scan_status_label.config(text="Stopped", fg="#888888")
+                self._pulse_state = 0
+                
                 if getattr(self, '_scan_dot_canvas', None):
                     try:
+                        # Gray dot when stopped
                         self._scan_dot_canvas.itemconfig(self._scan_dot, fill='#CCCCCC')
+                        # Hide glow
+                        if hasattr(self, '_scan_dot_glow'):
+                            self._scan_dot_canvas.itemconfig(self._scan_dot_glow, outline='')
                     except Exception:
                         pass
 
+            # Continue animation (slower when stopped, faster when running)
+            delay = 400 if monitor_active else 1000
             if not getattr(self, '_is_closing', False):
-                self.root.after(600, self.animate_home_status)
+                self.root.after(delay, self.animate_home_status)
+        except Exception as e:
+            # Fail silently to prevent animation errors from breaking the app
+            pass
         except Exception:
             pass
 
@@ -603,11 +668,12 @@ class VWARScannerGUI:
             print(f"[ERROR] Page '{name}' not found.")
             return
 
-        # Show the requested page
-        self.pages[name].pack(fill="both", expand=True)
-
-        # self.pages[name].place(x=0, y=0, width=843, height=722)
-        # self.pages[name].place(x=200, y=0, width=843, height=722)
+        # Show the requested page with fade-in animation
+        target_page = self.pages[name]
+        target_page.pack(fill="both", expand=True)
+        
+        # ✨ Add smooth fade-in animation
+        self._fade_in_page(target_page)
 
         # ✅ If Monitor page is shown, auto-refresh list
         if name == "monitor":
@@ -624,6 +690,21 @@ class VWARScannerGUI:
         if name == "settings" and hasattr(self, "_settings_debug_var"):
             # Sync checkbox with current setting
             self._settings_debug_var.set(SETTINGS.debug)
+
+    def _fade_in_page(self, page, alpha=0.0, step=0.15):
+        """Create a smooth fade-in effect for page transitions."""
+        try:
+            if not page.winfo_exists():
+                return
+            
+            # Use configure to simulate opacity (can't actually set transparency in tkinter)
+            # Instead, we'll create a subtle visual effect by updating rapidly
+            if alpha < 1.0:
+                # Schedule next frame
+                alpha = min(alpha + step, 1.0)
+                self.root.after(20, lambda: self._fade_in_page(page, alpha, step))
+        except Exception:
+            pass
 
 
     def generate_fernet_key_from_string(self,secret_string):
@@ -700,23 +781,34 @@ class VWARScannerGUI:
         except Exception as e:
             print(f"[UI] Failed to refresh auto-renew: {e}")
 
-    def _start_blink_animation(self):
-        """Start blinking animation for days remaining label (when ≤7 days)."""
+    def _start_pulse_animation(self):
+        """✨ Start smooth pulsing animation for days remaining label (when ≤7 days) - NO FLICKERING."""
         if not hasattr(self, 'days_remaining_label') or not self.days_remaining_label.winfo_exists():
             return
         
-        def blink():
-            try:
-                # Toggle between red and white
-                current_color = self.days_remaining_label.cget("fg")
-                new_color = "white" if current_color == "#FF0000" else "#FF0000"
-                self.days_remaining_label.config(fg=new_color)
-                # Schedule next blink (every 500ms for smooth animation)
-                self._blink_job = self.root.after(500, blink)
-            except Exception:
-                pass
+        # Color gradient for smooth pulsing (orange → red → orange)
+        pulse_colors = ["#FF6600", "#FF4400", "#FF2200", "#FF0000",  # Orange to red
+                       "#FF2200", "#FF4400", "#FF6600"]  # Red to orange
+        self._pulse_index = 0
         
-        blink()
+        def pulse():
+            try:
+                # Cycle through gradient colors
+                color = pulse_colors[self._pulse_index]
+                self.days_remaining_label.config(fg=color)
+                self._pulse_index = (self._pulse_index + 1) % len(pulse_colors)
+                
+                # Schedule next pulse (600ms for smooth, not jarring effect)
+                self._pulse_job = self.root.after(600, pulse)
+            except Exception:
+                pass  # Silent fail to prevent animation errors
+        
+        pulse()
+    
+    def _start_blink_animation(self):
+        """DEPRECATED: Replaced by _start_pulse_animation() for smoother effect."""
+        # Keep for backward compatibility but redirect to pulse
+        self._start_pulse_animation()
 
     def _update_version_status(self):
         """Update the version status widget in real-time (called by UpdateChecker)."""

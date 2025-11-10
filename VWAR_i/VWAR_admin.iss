@@ -7,6 +7,8 @@ OutputBaseFilename=VWAR_Installer
 LicenseFile="G:\Ratul\Job\BFIN IT\Versions\Bitss\BITSS-VWAR-Software\VWAR_i\license.txt"
 PrivilegesRequired=admin
 DisableProgramGroupPage=yes
+; ✅ Allow user to choose installation directory
+DisableDirPage=no
 Compression=lzma
 SolidCompression=yes
 SetupIconFile="G:\Ratul\Job\BFIN IT\Versions\Bitss\BITSS-VWAR-Software\VWAR_i\assets\VWAR.ico"
@@ -49,6 +51,22 @@ Filename: "schtasks"; \
   Parameters: "/Delete /TN ""VWAR"" /F"; \
   Flags: runhidden runascurrentuser; \
   StatusMsg: "Removing VWAR startup task..."
+
+[UninstallDelete]
+; ✅ Remove all runtime data folders and their contents
+Type: filesandordirs; Name: "{app}\quarantine"
+Type: filesandordirs; Name: "{app}\scanvault"
+Type: filesandordirs; Name: "{app}\data"
+Type: filesandordirs; Name: "{app}\assets"
+Type: filesandordirs; Name: "{app}\vwar_monitor"
+Type: filesandordirs; Name: "{app}\Backup"
+; ✅ Remove any generated files
+Type: files; Name: "{app}\*.log"
+Type: files; Name: "{app}\*.json"
+Type: files; Name: "{app}\*.tmp"
+; ✅ Remove desktop and startup icons
+Type: files; Name: "{commondesktop}\VWAR.lnk"
+Type: files; Name: "{userstartup}\VWAR.lnk"
 
 ; [Code]
 // function IsVWARRunning(): Boolean;

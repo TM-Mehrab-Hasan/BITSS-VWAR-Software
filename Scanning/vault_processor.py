@@ -255,6 +255,10 @@ class ScanVaultProcessor:
                         # slight normalization, ensuring our rechecks target the right file.
                         restored_path = shutil.move(vaulted_path, original_path)
                         
+                        # ✅ FIX: Small delay to allow OS to release file handles
+                        # This prevents "save with different name" errors in applications like Word/Excel
+                        time.sleep(0.2)
+                        
                         # Archive vault metadata with status
                         if os.path.exists(meta_path):
                             try:
@@ -519,13 +523,14 @@ class ScanVaultProcessor:
             telemetry_inc('recheck_sibling_sweep_error_post_restore')
             return False
 
-    # Utilities
     def _sha256_file(self, path: str) -> str | None:
+        """Calculate SHA256 hash of a file with proper handle cleanup."""
         try:
             h = hashlib.sha256()
             with open(path, 'rb') as f:
                 for chunk in iter(lambda: f.read(8192), b''):
                     h.update(chunk)
+            # File handle is automatically closed by 'with' statement
             return h.hexdigest()
         except Exception:
             return None

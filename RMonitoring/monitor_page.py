@@ -3,7 +3,7 @@ import re
 import json
 import time
 import threading
-from tkinter import Frame, Label, Button, Listbox, Scrollbar, Text, StringVar, filedialog, Toplevel, messagebox
+from tkinter import Frame, Label, Button, Listbox, Scrollbar, Text, StringVar, filedialog, Toplevel, messagebox, LabelFrame
 from RMonitoring.real_time_monitor import RealTimeMonitor
 from utils.notify import notify as notify_user
 from utils.tooltip import Tooltip
@@ -28,8 +28,9 @@ class MonitorPage(Frame):
         self.quarantine_folder = QUARANTINE_FOLDER
         self.scanvault_folder = SCANVAULT_FOLDER
 
-        # Start ScanVault processor (always active)
-        start_vault_processor(monitor_page_ref=self)
+        # ✅ FIX: Don't auto-start ScanVault here - it will be controlled by auto scan toggle
+        # ScanVault processor will start/stop with auto scanning
+        # start_vault_processor(monitor_page_ref=self)
 
         self.setup_gui()
 
@@ -65,8 +66,16 @@ class MonitorPage(Frame):
         Label(self, text="", bg="#009AA5").place(x=20, y=285, width=950, height=2)
 
         # ---- Quarantine (bottom-left) ----
-        Label(self, text="Quarantined Files", font=("Inter", 12, "bold"),
-              bg="#009AA5", fg="white").place(x=20, y=310)
+        # ✨ Quarantine header with animated file counter
+        quarantine_header_frame = Frame(self, bg="#009AA5")
+        quarantine_header_frame.place(x=20, y=310, width=500, height=25)
+        
+        Label(quarantine_header_frame, text="Quarantined Files", font=("Inter", 12, "bold"),
+              bg="#009AA5", fg="white").pack(side="left")
+        
+        self.quarantine_count_label = Label(quarantine_header_frame, text="(0)", font=("Inter", 11, "bold"),
+                                           bg="#009AA5", fg="#FFD700")  # Gold color
+        self.quarantine_count_label.pack(side="left", padx=5)
         self.quarantine_listbox = Listbox(self, font=("Inter", 10))
         self.quarantine_listbox.place(x=20, y=340, width=500, height=130)
         yscroll = Scrollbar(self, orient="vertical", command=self.quarantine_listbox.yview)
@@ -195,6 +204,14 @@ class MonitorPage(Frame):
             
             self.real_time_monitor.start_cpp_monitor_engine(excludes=exclude_paths)
 
+            # ✅ FIX: Start ScanVault processor when auto scan starts
+            from Scanning.vault_processor import get_vault_processor
+            vault_processor = get_vault_processor()
+            if not vault_processor._running:
+                vault_processor.monitor_page = self  # Update reference
+                vault_processor.start()
+                log_message("[MONITOR] ScanVault processor started with auto scanning")
+
             self.monitoring_active = True
             self.auto_scan_button_text.set("Stop Auto Scanning")
             try:
@@ -218,6 +235,16 @@ class MonitorPage(Frame):
                     self.real_time_monitor.stop_cpp_monitor_engine()
                 except Exception:
                     pass
+            
+            # ✅ FIX: Stop ScanVault processor when auto scan stops
+            from Scanning.vault_processor import get_vault_processor
+            try:
+                vault_processor = get_vault_processor()
+                vault_processor.stop()
+                log_message("[MONITOR] ScanVault processor stopped with auto scanning")
+            except Exception as e:
+                log_message(f"[WARNING] Failed to stop ScanVault processor: {e}")
+            
             self.monitoring_active = False
             self.auto_scan_button_text.set("Start Auto Scanning")
             try:
@@ -263,8 +290,10 @@ class MonitorPage(Frame):
         return
 
     def delete_selected(self):
+        """Show user-friendly dialog with options to permanently delete or restore the quarantined file."""
         index = self.quarantine_listbox.curselection()
         if not index:
+            messagebox.showwarning("No Selection", "Please select a quarantined file first.")
             return
         index = index[0]
 
@@ -275,19 +304,189 @@ class MonitorPage(Frame):
             return
 
         qpath = meta_path.replace(".meta", "")
-
+        
+        # Load metadata to get original file info
         try:
-            if os.path.exists(qpath): os.remove(qpath)
-            if os.path.exists(meta_path): os.remove(meta_path)
-
-            self.quarantine_listbox.delete(index)
-            self.quarantine_detail_text.config(state="normal")
-            self.quarantine_detail_text.delete("1.0", "end")
-            self.quarantine_detail_text.config(state="disabled")
-            self.update_quarantine_listbox()
-            print(f"[INFO] Deleted {qpath} and metadata.")
+            with open(meta_path, "r", encoding="utf-8") as f:
+                metadata = json.load(f)
+            original_path = metadata.get('original_path', 'Unknown')
+            file_name = os.path.basename(qpath).replace('.quarantined', '')
+            matched_rules = metadata.get('matched_rules', [])
         except Exception as e:
-            print(f"[ERROR] Delete failed: {e}")
+            messagebox.showerror("Error", f"Failed to load file metadata:\n{e}")
+            return
+
+        # Create custom dialog window
+        dialog = Toplevel(self.root)
+        dialog.title("⚠️ Quarantined File Action")
+        dialog.geometry("600x400")
+        dialog.configure(bg="#f0f0f0")
+        dialog.resizable(False, False)
+        
+        # Center the dialog
+        dialog.transient(self.root)
+        dialog.grab_set()
+        
+        # Header
+        header_frame = Frame(dialog, bg="#d9534f", height=60)
+        header_frame.pack(fill="x")
+        header_frame.pack_propagate(False)
+        
+        Label(header_frame, text="⚠️ What would you like to do with this file?", 
+              font=("Arial", 14, "bold"), bg="#d9534f", fg="white").pack(pady=15)
+        
+        # Content area
+        content_frame = Frame(dialog, bg="#f0f0f0")
+        content_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        
+        # File information
+        info_frame = LabelFrame(content_frame, text="📄 File Information", 
+                               font=("Arial", 11, "bold"), bg="white", fg="#333", padx=15, pady=10)
+        info_frame.pack(fill="x", pady=(0, 15))
+        
+        Label(info_frame, text=f"File Name:", font=("Arial", 10, "bold"), 
+              bg="white", fg="#555", anchor="w").grid(row=0, column=0, sticky="w", pady=3)
+        Label(info_frame, text=file_name, font=("Arial", 10), 
+              bg="white", fg="#000", anchor="w", wraplength=450).grid(row=0, column=1, sticky="w", pady=3, padx=(10, 0))
+        
+        Label(info_frame, text=f"Original Location:", font=("Arial", 10, "bold"), 
+              bg="white", fg="#555", anchor="w").grid(row=1, column=0, sticky="w", pady=3)
+        Label(info_frame, text=original_path, font=("Arial", 10), 
+              bg="white", fg="#000", anchor="w", wraplength=450).grid(row=1, column=1, sticky="w", pady=3, padx=(10, 0))
+        
+        Label(info_frame, text=f"Threat Detected:", font=("Arial", 10, "bold"), 
+              bg="white", fg="#555", anchor="w").grid(row=2, column=0, sticky="w", pady=3)
+        rules_text = ', '.join(matched_rules) if matched_rules else 'Unknown'
+        Label(info_frame, text=rules_text, font=("Arial", 10), 
+              bg="white", fg="#d9534f", anchor="w", wraplength=450).grid(row=2, column=1, sticky="w", pady=3, padx=(10, 0))
+        
+        # Warning message
+        warning_frame = Frame(content_frame, bg="#fff3cd", relief="solid", borderwidth=1)
+        warning_frame.pack(fill="x", pady=(0, 15))
+        
+        Label(warning_frame, text="⚠️ Warning: This file was quarantined because it matched malware signatures.", 
+              font=("Arial", 9, "bold"), bg="#fff3cd", fg="#856404", wraplength=550, justify="left").pack(padx=10, pady=8)
+        
+        # Action description
+        Label(content_frame, text="Please choose an action:", 
+              font=("Arial", 11, "bold"), bg="#f0f0f0", fg="#333").pack(anchor="w", pady=(0, 10))
+        
+        # Result variable
+        user_choice = {"action": None}
+        
+        def on_restore():
+            """Restore file to original location."""
+            user_choice["action"] = "restore"
+            dialog.destroy()
+        
+        def on_delete():
+            """Permanently delete the file."""
+            user_choice["action"] = "delete"
+            dialog.destroy()
+        
+        def on_cancel():
+            """Cancel and keep in quarantine."""
+            user_choice["action"] = "cancel"
+            dialog.destroy()
+        
+        # Buttons frame
+        buttons_frame = Frame(content_frame, bg="#f0f0f0")
+        buttons_frame.pack(fill="x", pady=(10, 0))
+        
+        # Restore button (green)
+        restore_btn = Button(buttons_frame, text="✅ Keep File (Restore)", 
+                            command=on_restore, bg="#5cb85c", fg="white", 
+                            font=("Arial", 11, "bold"), cursor="hand2", relief="raised", 
+                            borderwidth=2, padx=15, pady=10)
+        restore_btn.pack(side="left", expand=True, fill="x", padx=(0, 5))
+        Tooltip(restore_btn, "Restore this file to its original location.\nUse this if you believe the file is safe.")
+        
+        # Delete button (red)
+        delete_btn = Button(buttons_frame, text="🗑️ Delete Permanently", 
+                           command=on_delete, bg="#d9534f", fg="white", 
+                           font=("Arial", 11, "bold"), cursor="hand2", relief="raised", 
+                           borderwidth=2, padx=15, pady=10)
+        delete_btn.pack(side="left", expand=True, fill="x", padx=5)
+        Tooltip(delete_btn, "Permanently delete this file from quarantine.\nThis action cannot be undone.")
+        
+        # Cancel button (gray)
+        cancel_btn = Button(buttons_frame, text="❌ Cancel", 
+                           command=on_cancel, bg="#6c757d", fg="white", 
+                           font=("Arial", 11, "bold"), cursor="hand2", relief="raised", 
+                           borderwidth=2, padx=15, pady=10)
+        cancel_btn.pack(side="left", expand=True, fill="x", padx=(5, 0))
+        Tooltip(cancel_btn, "Keep the file in quarantine and take no action.")
+        
+        # Wait for user decision
+        self.root.wait_window(dialog)
+        
+        # Process user choice
+        if user_choice["action"] == "restore":
+            # Restore file to original location
+            try:
+                import shutil
+                
+                # Create directory if it doesn't exist
+                original_dir = os.path.dirname(original_path)
+                os.makedirs(original_dir, exist_ok=True)
+                
+                # Copy file back to original location
+                shutil.copy2(qpath, original_path)
+                
+                # Remove from quarantine
+                if os.path.exists(qpath):
+                    os.remove(qpath)
+                if os.path.exists(meta_path):
+                    os.remove(meta_path)
+                
+                # Update UI
+                self.quarantine_listbox.delete(index)
+                self.quarantine_detail_text.config(state="normal")
+                self.quarantine_detail_text.delete("1.0", "end")
+                self.quarantine_detail_text.config(state="disabled")
+                self.update_quarantine_listbox()
+                
+                log_message(f"[RESTORED] {file_name} → {original_path}")
+                messagebox.showinfo("✅ File Restored", 
+                                  f"The file has been successfully restored to:\n\n{original_path}\n\n"
+                                  f"⚠️ Please ensure this file is safe before opening it.")
+                
+            except Exception as e:
+                log_message(f"[ERROR] Restore failed for {file_name}: {e}")
+                messagebox.showerror("Restore Failed", 
+                                   f"Failed to restore the file:\n\n{str(e)}\n\n"
+                                   f"The file remains in quarantine.")
+        
+        elif user_choice["action"] == "delete":
+            # Permanently delete the file
+            try:
+                # Remove quarantined file and metadata
+                if os.path.exists(qpath):
+                    os.remove(qpath)
+                if os.path.exists(meta_path):
+                    os.remove(meta_path)
+                
+                # Update UI
+                self.quarantine_listbox.delete(index)
+                self.quarantine_detail_text.config(state="normal")
+                self.quarantine_detail_text.delete("1.0", "end")
+                self.quarantine_detail_text.config(state="disabled")
+                self.update_quarantine_listbox()
+                
+                log_message(f"[DELETED] Permanently removed {file_name} from quarantine")
+                messagebox.showinfo("🗑️ File Deleted", 
+                                  f"The file has been permanently deleted from quarantine.\n\n"
+                                  f"File: {file_name}")
+                
+            except Exception as e:
+                log_message(f"[ERROR] Delete failed for {file_name}: {e}")
+                messagebox.showerror("Delete Failed", 
+                                   f"Failed to delete the file:\n\n{str(e)}")
+        
+        else:
+            # User cancelled - do nothing
+            log_message(f"[INFO] User cancelled action for {file_name}")
+            pass
 
     def restore_quarantined_file(self):
         index = self.quarantine_listbox.curselection()
@@ -380,10 +579,14 @@ class MonitorPage(Frame):
                 return self.root.after(0, self.update_quarantine_listbox)
             except Exception:
                 pass
+        
+        old_count = self.quarantine_listbox.size()  # ✨ Get count before update
+        
         self.quarantine_listbox.delete(0, "end")
         self.display_index_to_meta = {}
 
         if not os.path.exists(self.quarantine_folder):
+            self._animate_quarantine_count(0)  # ✨ Animate to 0
             return
 
         # Get and sort quarantined files by creation time
@@ -403,6 +606,10 @@ class MonitorPage(Frame):
                     self.display_index_to_meta[self.quarantine_listbox.size() - 1] = meta_file
                 except Exception as e:
                     print(f"[WARNING] Failed to load metadata for {file}: {e}")
+        
+        # ✨ Animate counter update (smooth counting effect)
+        new_count = len(files)
+        self._animate_quarantine_count(new_count)
 
     def update_scanvault_listbox(self):
         """Rebuild ScanVault list (pending + history) newest first, with status suffix for completed."""
@@ -514,3 +721,28 @@ class MonitorPage(Frame):
             self.update_scanvault_listbox()
         except Exception as e:
             print(f"[WARNING] Failed to clear vault history: {e}")
+    
+    def _animate_quarantine_count(self, target_count):
+        """✨ Animate quarantine file counter with smooth counting effect (no flickering)."""
+        try:
+            current_text = self.quarantine_count_label.cget("text")
+            current_count = int(current_text.strip("()")) if current_text.strip("()").isdigit() else 0
+            
+            # If count unchanged, no animation needed
+            if current_count == target_count:
+                return
+            
+            # Animate counting (increment or decrement)
+            step = 1 if target_count > current_count else -1
+            
+            def _update_count():
+                nonlocal current_count
+                if current_count != target_count:
+                    current_count += step
+                    self.quarantine_count_label.config(text=f"({current_count})")
+                    self.root.after(30, _update_count)  # 30ms per step for smooth effect
+            
+            _update_count()
+        except Exception:
+            # Fallback to instant update on error
+            self.quarantine_count_label.config(text=f"({target_count})")

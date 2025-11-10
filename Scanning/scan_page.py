@@ -243,7 +243,7 @@ from Scanning.yara_engine import fetch_and_generate_yara_rules, compile_yara_rul
 from Scanning.quarantine import quarantine_file
 from utils.tooltip import Tooltip
 from utils.logger import log_message
-from utils.notify import notify
+from utils.notify import notify, show_app_notification
 from utils.settings import SETTINGS
 import yara
 import os
@@ -266,9 +266,17 @@ class ScanPage(Frame):
         self.stop_scan = False
 
         self.build_ui()
+        
+        # ✨ Show loading spinner during YARA rule fetch
+        self._show_loading_spinner("Loading YARA rules...")
+        
         # Fetch and compile rules, showing only one relevant message for each step
         fetch_status, fetch_count = fetch_and_generate_yara_rules(lambda msg: None)  # suppress direct log
         rules, compile_count = compile_yara_rules(log_func=lambda msg: None)  # suppress direct log
+        
+        # ✨ Hide spinner after loading complete
+        self._hide_loading_spinner()
+        
         # Simplified UI message: hide internal method details from end user
         if compile_count > 0 and fetch_status in ("remote", "local"):
             # Rules were fetched/loaded and compiled successfully
@@ -388,8 +396,27 @@ class ScanPage(Frame):
         self.progress_label = Label(progress_frame, text="PROGRESS : 0%", bg="#12e012", fg="#000000", font=("Inter", 12))
         self.progress_label.pack(anchor="w")
 
+        # ✨ Custom progress bar with animation support
         self.progress = Progressbar(progress_frame, orient="horizontal", mode="determinate")
         self.progress.pack(fill="x")
+        
+        # Configure custom style for animated stripes (creates professional look)
+        try:
+            from tkinter import ttk
+            style = ttk.Style()
+            style.theme_use('clam')  # Use clam theme for better customization
+            style.configure("Animated.Horizontal.TProgressbar",
+                          troughcolor='#E0E0E0',
+                          background='#00AA00',  # Green progress
+                          bordercolor='#009AA5',
+                          lightcolor='#00DD00',
+                          darkcolor='#008800')
+            self.progress.config(style="Animated.Horizontal.TProgressbar")
+        except Exception:
+            pass  # Fallback to default style if configuration fails
+        
+        # Animation state
+        self._progress_animating = False
 
         # === Results Area (Matched / Tested) ===
         results_frame = Frame(self, bg="#009AA5")
@@ -424,11 +451,26 @@ class ScanPage(Frame):
 
 
     def _add_button_with_tooltip(self, parent, text, command, tooltip, bg=None, fg=None):
-        btn = Button(parent, text=text, command=command, bg=bg, fg=fg)
+        btn = Button(parent, text=text, command=command, bg=bg, fg=fg, relief="raised", bd=2)
         btn.pack(side="left", padx=5)
+        
+        # ✨ Add click animation (press-down effect)
+        self._add_button_click_effect(btn)
+        
         tip_label = Label(parent, text="?", bg="#009AA5", fg="white", font=("Arial", 12, "bold"))
         tip_label.pack(side="left", padx=(0, 10))
         Tooltip(tip_label, tooltip)
+    
+    def _add_button_click_effect(self, button):
+        """Add subtle press-down effect on button click (no flickering)."""
+        def on_press(e):
+            button.config(relief="sunken")
+        
+        def on_release(e):
+            button.config(relief="raised")
+        
+        button.bind("<ButtonPress-1>", on_press)
+        button.bind("<ButtonRelease-1>", on_release)
 
 
 
@@ -480,12 +522,34 @@ class ScanPage(Frame):
             return
         
         self.stop_scan = False
+        
+        # ✨ Start progress bar pulse animation
+        self._progress_animating = True
+        self._animate_progress_pulse()
+        
         thread = threading.Thread(target=self.scan, daemon=True)
         thread.start()
 
     def stop_scan_thread(self):
         self.stop_scan = True
+        self._progress_animating = False  # ✨ Stop animation
         self.log("[INFO] Scan stop requested.", "load")
+    
+    def _animate_progress_pulse(self):
+        """Create subtle pulsing animation on progress label during scan."""
+        if not self._progress_animating:
+            return
+        
+        try:
+            # Alternate between two shades of green for subtle pulse (no flickering)
+            current_bg = self.progress_label.cget("bg")
+            new_bg = "#10d010" if current_bg == "#12e012" else "#12e012"
+            self.progress_label.config(bg=new_bg)
+            
+            # Continue animation every 800ms (slow, smooth pulse)
+            self.root.after(800, self._animate_progress_pulse)
+        except Exception:
+            pass  # Silent fail to prevent animation errors
 
     def clear_tested_history(self):
         """Clear the tested files history."""
@@ -596,6 +660,20 @@ class ScanPage(Frame):
                     notify("⚠️ Threat Detected!", f"Rule: {rule}\nFile: {os.path.basename(path)}")
                 except Exception:
                     pass
+            
+            # ✨ Show animated in-app notification for threats
+            try:
+                show_app_notification(
+                    self.root, 
+                    "⚠️ Threat Detected!",
+                    f"Rule: {rule}\nFile: {os.path.basename(path)}",
+                    duration=6000,
+                    bg_color="#CC0000",  # Red for danger
+                    title_color="white"
+                )
+            except Exception:
+                pass  # Silent fail if notification error
+            
             return True  # Return True if threat found
         else:
             if status == "NO_RULES":
@@ -610,6 +688,63 @@ class ScanPage(Frame):
                 self.log(f"[ERROR] Unexpected failure scanning: {path}", "tested")
             # CLEAN is silent except already logged as tested
             return False  # Return False if no threat
+
+    def _show_loading_spinner(self, message="Loading..."):
+        """Display animated loading spinner overlay."""
+        try:
+            from tkinter import Toplevel
+            
+            self._spinner_window = Toplevel(self.root)
+            self._spinner_window.title("")
+            self._spinner_window.overrideredirect(True)  # Remove window decorations
+            self._spinner_window.config(bg="#009AA5")
+            
+            # Center on screen
+            width, height = 300, 100
+            x = (self._spinner_window.winfo_screenwidth() // 2) - (width // 2)
+            y = (self._spinner_window.winfo_screenheight() // 2) - (height // 2)
+            self._spinner_window.geometry(f"{width}x{height}+{x}+{y}")
+            
+            # Message label
+            Label(self._spinner_window, text=message, font=("Arial", 12, "bold"),
+                  bg="#009AA5", fg="white").pack(pady=15)
+            
+            # Animated dots
+            self._spinner_label = Label(self._spinner_window, text="●", font=("Arial", 24),
+                                       bg="#009AA5", fg="white")
+            self._spinner_label.pack()
+            
+            self._spinner_active = True
+            self._animate_spinner_dots()
+            
+            self.root.update()
+        except Exception:
+            pass  # Silent fail if spinner creation fails
+    
+    def _animate_spinner_dots(self):
+        """Animate spinner dots (● ● ●)."""
+        if not hasattr(self, '_spinner_active') or not self._spinner_active:
+            return
+        
+        try:
+            dots = ["●", "● ●", "● ● ●", "● ●"]
+            current_text = self._spinner_label.cget("text")
+            current_index = dots.index(current_text) if current_text in dots else 0
+            next_index = (current_index + 1) % len(dots)
+            self._spinner_label.config(text=dots[next_index])
+            
+            self.root.after(300, self._animate_spinner_dots)  # Update every 300ms
+        except Exception:
+            pass
+    
+    def _hide_loading_spinner(self):
+        """Hide and destroy loading spinner."""
+        try:
+            self._spinner_active = False
+            if hasattr(self, '_spinner_window'):
+                self._spinner_window.destroy()
+        except Exception:
+            pass
 
 
 

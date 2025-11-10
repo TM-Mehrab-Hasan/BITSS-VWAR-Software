@@ -267,13 +267,15 @@ def main():
         # Store validator reference for cleanup
         app.license_validator = license_validator
         
-        # Start ScanVault processor immediately to handle vaulted files
-        try:
-            from Scanning.vault_processor import start_vault_processor
-            start_vault_processor()
-            print("[INFO] ScanVault processor started")
-        except Exception as e:
-            print(f"[WARNING] Failed to start ScanVault processor: {e}")
+        # ✅ FIX: Don't auto-start ScanVault processor here
+        # It will be controlled by the Auto Scan toggle in Monitor page
+        # This prevents ScanVault from running when auto scan is disabled
+        # try:
+        #     from Scanning.vault_processor import start_vault_processor
+        #     start_vault_processor()
+        #     print("[INFO] ScanVault processor started")
+        # except Exception as e:
+        #     print(f"[WARNING] Failed to start ScanVault processor: {e}")
         
         # Real-time update checker not needed - using simple version
         # from utils.update_checker import start_update_checker
