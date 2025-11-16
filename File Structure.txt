@@ -1,0 +1,51 @@
+vwar_scanner/
+│
+├── main.py                           # 🚀 Entry point: handles activation, launches app
+├── app_main.py                       # 🧠 Root GUI app controller — handles navigation
+├── config.py                         # ⚙️ All constants (paths, URLs, API keys)
+├── requirements.txt                  # 📦 Python dependencies
+├── README.md                         # 📘 Setup & usage documentation
+│
+├── activation/                       # 🔐 License activation module
+│   ├── __init__.py
+│   ├── gui.py                        # Activation GUI (Tkinter)
+│   ├── hwid.py                       # Get processor/motherboard ID
+│   └── license_utils.py              # Check, validate, and store activation data
+│
+├── Scanning/                         # 🧪 Manual YARA scan module
+│   ├── __init__.py
+│   ├── scan_page.py                  # GUI page for manual file/folder scan
+│   ├── yara_engine.py                # Fetch, categorize, and compile YARA rules
+│   ├── quarantine.py                 # Quarantine logic (move, restore, delete)
+│   ├── scanner_core.py 
+│
+├── Backup/                           # 💾 Backup system (manual + auto)
+│   ├── __init__.py
+│   ├── main_backup_page.py          # GUI: hub for manual, restore, and auto
+│   ├── backup_page.py               # GUI: manual file/folder backup
+│   ├── restore_page.py              # GUI: file/folder restore from backups
+│   ├── auto_backup.py               # 🔁 Background logic for 7-day rotating auto-backup
+│   ├── auto_backup_page.py          # GUI for auto-backup setup & manual trigger
+│
+├── RMonitoring/                      # 🔄 Real-time monitoring system
+│   ├── __init__.py
+│   ├── monitor_page.py              # GUI: toggle real-time monitoring
+│   ├── real_time_monitor.py        # Watchdog handler + threaded file scan
+│
+├── utils/                            # 🧰 Shared utilities
+│   ├── __init__.py
+│   ├── tooltip.py                   # Tooltip widget class
+│   ├── logger.py                    # Logging (to GUI + file if needed)
+│   ├── notify.py
+│   ├── update_checker.py
+│
+│
+├── assets/                           # 🎨 Icons, visuals, and YARA rule storage
+│   ├── VWAR.ico                     # App icon for packaging
+│   └── yara/                        # Downloaded + categorized rules
+│
+├── data/                             # 💽 Local user data
+│   ├── activation.json              # Saved activation credentials
+│   ├── update_info.json            # (Optional) version check info
+│   └── auto_backup_config.json     # Auto-backup config: folders, time, destination
+

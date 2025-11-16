@@ -1,0 +1,54 @@
+import win32pipe, win32file, pywintypes
+
+PIPE_NAME =  r'\\.\pipe\vwar_monitor'
+
+def read_wide_string_from_pipe(pipe_handle):
+    try:
+        hr, data = win32file.ReadFile(pipe_handle, 65536, None)
+    except pywintypes.error:
+        return None
+    try:
+        s = data.decode('utf-16le', errors='ignore').rstrip('\x00')
+        return s
+    except Exception:
+        return None
+
+def listen_files():
+    """
+    Generator that yields file paths sent by watcher.exe via the named pipe.
+    Keeps running until interrupted.
+    """
+    print("[Python] Pipe server starting:", PIPE_NAME)
+    while True:
+        pipe = win32pipe.CreateNamedPipe(
+            PIPE_NAME,
+            win32pipe.PIPE_ACCESS_INBOUND,
+            win32pipe.PIPE_TYPE_MESSAGE | win32pipe.PIPE_READMODE_MESSAGE | win32pipe.PIPE_WAIT,
+            1, 65536, 65536, 0, None
+        )
+        try:
+            print("[Python] Waiting for watcher to connect...")
+            win32pipe.ConnectNamedPipe(pipe, None)
+            print("[Python] Watcher connected.")
+
+            while True:
+                filepath = read_wide_string_from_pipe(pipe)
+                if filepath is None:
+                    # Connection closed or error; break inner loop to wait for next client
+                    print("[Python] Connection closed or error.")
+                    break
+                if filepath == '':
+                    # Empty string is used as shutdown signal
+                    print("[Python] Received shutdown signal.")
+                    win32file.CloseHandle(pipe)
+                    return
+                print("[Python] Received file path:", filepath)
+                yield filepath
+
+        except Exception as e:
+            print("[Python] Pipe error:", e)
+        finally:
+            try:
+                win32file.CloseHandle(pipe)
+            except Exception:
+                pass

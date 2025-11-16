@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual Environment
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Application specific
+data/activation.enc
+data/activation.json
+data/*.log
+quarantine/
+scanvault/
+VWARbackup/
+data/scan_queue/
+
+# Build artifacts
+*.spec
+build/
+dist/
+
+# Temporary files
+*.tmp
+*.bak
+~*
+
+# Sensitive data
+*.enc
+data/auto_backup.json
+data/scan_schedule.json
