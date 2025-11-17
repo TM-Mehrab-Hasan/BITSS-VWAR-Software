@@ -179,6 +179,12 @@ Write-Host "Version: 3.0.0" -ForegroundColor White
 Write-Host "Build Date: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor White
 Write-Host ""
 Write-Host "New Features in v3.0.0:" -ForegroundColor White
+Write-Host "  [OK] Automatic installation detection system" -ForegroundColor Green
+Write-Host "  [OK] Enhanced folder monitoring (parent + installer dirs)" -ForegroundColor Green
+Write-Host "  [OK] In-place scanning during software installation" -ForegroundColor Green
+Write-Host "  [OK] Clickable Installation Detected label with popup" -ForegroundColor Green
+Write-Host "  [OK] Process monitoring with psutil" -ForegroundColor Green
+Write-Host "  [OK] Separate installation.log for install tracking" -ForegroundColor Green
 Write-Host "  [OK] Integrated PDF viewer in Help page" -ForegroundColor Green
 Write-Host "  [OK] Direct PDF viewing with PyMuPDF" -ForegroundColor Green
 Write-Host "  [OK] Page navigation controls" -ForegroundColor Green

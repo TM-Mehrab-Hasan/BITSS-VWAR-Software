@@ -20,6 +20,7 @@ from utils.scanvault_logger import (
 )
 from utils.scanvault_queue import get_next_pending, mark_processing, mark_completed
 from Scanning.scanvault import vault_capture_file
+from utils.installation_detector import get_installation_detector
 
 class ScanVaultProcessor:
     """Background processor for ScanVault files using queue-based sequential processing."""
@@ -52,6 +53,14 @@ class ScanVaultProcessor:
             success, count = scanner_core.reload_yara_rules()
             if not success:
                 print("[SCANVAULT WARNING] No threat signatures found. Files will be vaulted but not scanned until signatures are available.")
+        
+        # 🔧 Start installation detector
+        try:
+            detector = get_installation_detector()
+            detector.start_monitoring()
+            log_message("[SCANVAULT] Installation detector started")
+        except Exception as e:
+            log_message(f"[SCANVAULT] Failed to start installation detector: {e}")
         
         self._running = True
         self._thread = threading.Thread(target=self._process_loop, daemon=True)
@@ -193,6 +202,15 @@ class ScanVaultProcessor:
                     mark_completed(original_path, success=False, result="Recently restored (race condition)")
                     continue
                 
+                # 🔧 Check if file is being installed (automatic installation mode)
+                detector = get_installation_detector()
+                is_installation = detector.is_file_being_installed(original_path)
+                
+                if is_installation:
+                    active_installers = detector.get_active_installers()
+                    installer_names = [inst['name'] for inst in active_installers]
+                    log_message(f"[SCANVAULT] 🔧 Installation detected: {', '.join(installer_names)} - Scanning in-place")
+                
                 # 🔍 SCAN DIRECTLY: Scan file in original location (no vaulting)
                 try:
                     log_message(f"[SCANVAULT] 🔍 Scanning file: {os.path.basename(original_path)}")
@@ -214,6 +232,11 @@ class ScanVaultProcessor:
                         log_scan(original_path, "THREAT", rule, scan_time_ms)
                         log_quarantine(original_path, quarantine_path, rule)
                         
+                        # Log to installation.log if during installation
+                        if is_installation:
+                            detector.log_installation_scan(original_path, "THREAT", rule, scan_time_ms)
+                            detector.log_installation_quarantine(original_path, quarantine_path, rule)
+                        
                         # Update quarantine UI
                         if self.monitor_page and hasattr(self.monitor_page, 'add_to_quarantine_listbox'):
                             self.monitor_page.add_to_quarantine_listbox(original_path, meta_path, [rule])
@@ -223,16 +246,21 @@ class ScanVaultProcessor:
                             self._notified_files.add(original_path)
                             try:
                                 file_name = os.path.basename(original_path)
-                                notify("🛡️ ScanVault: Threat Quarantined", f"Rule: {rule}\nFile: {file_name}")
+                                install_msg = " (during installation)" if is_installation else ""
+                                notify("🛡️ ScanVault: Threat Quarantined", f"Rule: {rule}\nFile: {file_name}{install_msg}")
                             except Exception:
                                 pass
                         
                         mark_completed(original_path, success=True, result=f"QUARANTINED: {rule}")
                         
                     elif status == "CLEAN":
-                        # File is clean - leave it in Downloads
+                        # File is clean - leave it where it is (Downloads or installation folder)
                         log_message(f"[SCANVAULT] ✅ CLEAN: {os.path.basename(original_path)}")
                         log_scan(original_path, "CLEAN", scan_time_ms=scan_time_ms)
+                        
+                        # Log to installation.log if during installation
+                        if is_installation:
+                            detector.log_installation_scan(original_path, "CLEAN", scan_time_ms=scan_time_ms)
                         
                         # Add to scan history for UI display
                         try:
@@ -251,7 +279,8 @@ class ScanVaultProcessor:
                                 'timestamp': timestamp_str,
                                 'final_status': 'CLEAN',
                                 'scan_time_ms': scan_time_ms,
-                                'action_timestamp': timestamp_str
+                                'action_timestamp': timestamp_str,
+                                'installation_mode': is_installation
                             }
                             
                             with open(history_meta_path, 'w', encoding='utf-8') as f:
@@ -267,7 +296,8 @@ class ScanVaultProcessor:
                             self._notified_files.add(original_path)
                             try:
                                 file_name = os.path.basename(original_path)
-                                notify("✅ File Scanned: Safe", f"File: {file_name}\nStatus: Clean - No threats detected")
+                                install_msg = " (during installation)" if is_installation else ""
+                                notify("✅ File Scanned: Safe", f"File: {file_name}\nStatus: Clean - No threats detected{install_msg}")
                             except Exception:
                                 pass
                         

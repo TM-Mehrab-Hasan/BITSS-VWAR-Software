@@ -10,7 +10,7 @@ from utils.tooltip import Tooltip
 from utils.logger import log_message
 from config import QUARANTINE_FOLDER, SCANVAULT_FOLDER
 from Scanning.vault_processor import start_vault_processor, stop_vault_processor, get_vault_processor
-from utils.installation_mode import get_installation_mode
+from utils.installation_detector import get_installation_detector
 
 class MonitorPage(Frame):
     def __init__(self, root, app_main, switch_page_callback):
@@ -66,10 +66,14 @@ class MonitorPage(Frame):
         Button(self, text="Clear History", command=self.clear_vault_history,
                bg="#555577", fg="white", font=("Inter", 10)).place(x=280, y=255, width=120, height=25)
         
-        # Installation Mode Toggle
-        self.install_mode_button_text = StringVar(value="🔧 Installation Mode: OFF")
-        Button(self, textvariable=self.install_mode_button_text, command=self.toggle_installation_mode,
-               bg="#FF8800", fg="white", font=("Inter", 10, "bold")).place(x=420, y=255, width=220, height=25)
+        # Installation Detection Status (automatic, clickable)
+        self.install_mode_button_text = StringVar(value="🔧 Installation Detected: None")
+        install_status_label = Label(self, textvariable=self.install_mode_button_text,
+                                     bg="#FF8800", fg="white", font=("Inter", 10, "bold"),
+                                     relief="sunken", bd=2, cursor="hand2")
+        install_status_label.place(x=420, y=255, width=220, height=25)
+        install_status_label.bind("<Button-1>", self.show_installer_details)
+        Tooltip(install_status_label, "Click to view installer details")
 
         # ---- Divider ----
         Label(self, text="", bg="#009AA5").place(x=20, y=285, width=950, height=2)
@@ -126,52 +130,128 @@ class MonitorPage(Frame):
         self.update_scanning_animation()
 
     # ---------------- Installation Mode Controls ----------------
-    def toggle_installation_mode(self):
-        """Toggle installation mode on/off."""
-        install_mode = get_installation_mode()
-        
-        if install_mode.is_active():
-            # Deactivate
-            install_mode.deactivate()
-            self.install_mode_button_text.set("🔧 Installation Mode: OFF")
-            messagebox.showinfo(
-                "Installation Mode",
-                "Installation Mode Deactivated\n\n"
-                "ScanVault will now capture and scan all files normally."
-            )
-        else:
-            # Activate for 10 minutes
-            install_mode.activate(duration_minutes=10)
-            self.install_mode_button_text.set("🔧 Installation Mode: ON (10:00)")
-            messagebox.showinfo(
-                "Installation Mode Activated",
-                "Installation Mode is now active for 10 minutes.\n\n"
-                "During this time:\n"
-                "• Installer files (.msi, .exe, .dll, etc.) will be scanned in their original location\n"
-                "• Clean files will remain in place (not moved to ScanVault)\n"
-                "• Malware will be quarantined immediately\n"
-                "• Files in trusted installer folders will be scanned in-place\n"
-                "• Regular files will still use ScanVault protection\n\n"
-                "Mode will auto-deactivate after 10 minutes."
-            )
-    
     def update_installation_mode_display(self):
-        """Update the installation mode button text with remaining time."""
+        """Update the installation mode status with automatic detection."""
         try:
-            install_mode = get_installation_mode()
+            # Check automatic installation detector
+            detector = get_installation_detector()
+            active_installers = detector.get_active_installers()
             
-            if install_mode.is_active():
-                remaining = install_mode.get_remaining_time()
-                minutes = remaining // 60
-                seconds = remaining % 60
-                self.install_mode_button_text.set(f"🔧 Installation Mode: ON ({minutes:02d}:{seconds:02d})")
+            if active_installers:
+                # Show only count, no names (names shown in popup when clicked)
+                count = len(active_installers)
+                self.install_mode_button_text.set(f"🔧 Installation Detected: {count}")
             else:
-                self.install_mode_button_text.set("🔧 Installation Mode: OFF")
+                self.install_mode_button_text.set("🔧 Installation Detected: None")
         except Exception:
             pass
         
         # Schedule next update in 1 second
         self.root.after(1000, self.update_installation_mode_display)
+
+    def show_installer_details(self, event=None):
+        """Show popup window with details of active installers."""
+        try:
+            from utils.installation_detector import get_installation_detector
+            detector = get_installation_detector()
+            active_installers = detector.get_active_installers()
+            
+            if not active_installers:
+                messagebox.showinfo("Installation Detection", "No installers currently running.")
+                return
+            
+            # Create popup window
+            popup = Toplevel(self.root)
+            popup.title("Active Installers")
+            popup.geometry("600x400")
+            popup.configure(bg="#1E1E1E")
+            popup.resizable(False, False)
+            
+            # Center the popup
+            popup.update_idletasks()
+            x = (popup.winfo_screenwidth() // 2) - (600 // 2)
+            y = (popup.winfo_screenheight() // 2) - (400 // 2)
+            popup.geometry(f"600x400+{x}+{y}")
+            
+            # Title label
+            title_label = Label(popup, text="🔧 Active Installation Processes",
+                              bg="#009AA5", fg="white", font=("Inter", 12, "bold"),
+                              pady=10)
+            title_label.pack(fill="x")
+            
+            # Info label
+            info_text = (
+                "The following installer processes are currently running.\n"
+                "Files created by these installers will be scanned in-place.\n"
+                "Only malware will be quarantined."
+            )
+            info_label = Label(popup, text=info_text, bg="#1E1E1E", fg="white",
+                             font=("Inter", 9), justify="left", wraplength=550, pady=10)
+            info_label.pack()
+            
+            # Create frame for installer list
+            list_frame = Frame(popup, bg="#2E2E2E", bd=2, relief="sunken")
+            list_frame.pack(padx=20, pady=10, fill="both", expand=True)
+            
+            # Add scrollbar
+            scrollbar = Scrollbar(list_frame)
+            scrollbar.pack(side="right", fill="y")
+            
+            # Create text widget for installer details
+            details_text = Text(list_frame, bg="#2E2E2E", fg="white",
+                               font=("Consolas", 10), wrap="word",
+                               yscrollcommand=scrollbar.set, state="normal",
+                               selectbackground="#009AA5", selectforeground="white")
+            details_text.pack(side="left", fill="both", expand=True)
+            scrollbar.config(command=details_text.yview)
+            
+            # Populate installer details
+            for idx, installer in enumerate(active_installers, 1):
+                name = installer.get('name', 'Unknown')
+                pid = installer.get('pid', 'N/A')
+                path = installer.get('path', 'Unknown')
+                duration = int(installer.get('duration', 0))
+                
+                # Format duration
+                minutes = duration // 60
+                seconds = duration % 60
+                duration_str = f"{minutes}m {seconds}s" if minutes > 0 else f"{seconds}s"
+                
+                # Get installation folder (parent of exe path)
+                if path and path != 'Unknown':
+                    install_folder = os.path.dirname(path)
+                else:
+                    install_folder = 'Unknown'
+                
+                # Format installer info
+                installer_info = (
+                    f"{'─' * 60}\n"
+                    f"  Installer #{idx}\n"
+                    f"{'─' * 60}\n"
+                    f"  Name:              {name}\n"
+                    f"  Process ID:        {pid}\n"
+                    f"  Running Time:      {duration_str}\n"
+                    f"  Installation Path: {install_folder}\n"
+                    f"  Executable:        {path}\n\n"
+                )
+                details_text.insert("end", installer_info)
+            
+            details_text.config(state="disabled")
+            
+            # Close button
+            close_btn = Button(popup, text="Close", command=popup.destroy,
+                             bg="#009AA5", fg="white", font=("Inter", 10, "bold"),
+                             activebackground="#007A85", activeforeground="white",
+                             cursor="hand2", relief="raised", bd=2)
+            close_btn.pack(pady=10)
+            
+            # Make popup modal
+            popup.transient(self.root)
+            popup.grab_set()
+            
+        except Exception as e:
+            log_message(f"[MONITOR] Error showing installer details: {e}")
+            messagebox.showerror("Error", f"Failed to show installer details:\n{e}")
 
     # ---------------- Monitoring Controls ----------------
     def toggle_monitoring(self):
@@ -703,6 +783,7 @@ class MonitorPage(Frame):
                         dt_key = os.path.getctime(meta)
                     fname = os.path.basename(data.get('vaulted_path', data.get('file_name', f)))
                     status = data.get('final_status')
+                    is_install = data.get('installation_mode', False)
                     suffix = ''
                     if status:
                         s = str(status).lower()
@@ -713,7 +794,10 @@ class MonitorPage(Frame):
                         elif s == 'duplicate_suppressed':
                             suffix = ' — duplicate suppressed'
                         elif s == 'clean':
-                            suffix = ' — ✅ clean (scanned)'
+                            if is_install:
+                                suffix = ' — ✅ clean (installation scan)'
+                            else:
+                                suffix = ' — ✅ clean (scanned)'
                     display = f"{fname} | {ts}{suffix}"
                     entries.append((dt_key, display, meta))
                 except Exception:

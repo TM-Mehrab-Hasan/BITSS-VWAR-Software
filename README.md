@@ -70,6 +70,9 @@ VWAR Scanner is an advanced malware detection and prevention system that combine
 - **Zero-Day Protection**: Prevents malware execution during download
 - **Metadata Preservation**: Maintains original file information for restoration
 - **Intelligent Handling**: Special treatment for installers and trusted files
+- **🔧 NEW: Automatic Installation Detection**: Detects running installers (.exe, .msi, .bat) and scans files in-place without interrupting installation
+- **Smart Installation Mode**: Only quarantines malware during installation, clean files stay where installed
+- **Installation Logging**: Separate `installation.log` tracks all installation-related scans and actions
 
 ### 🔐 Quarantine Management
 - **Secure Isolation**: Threats stored in protected quarantine folder

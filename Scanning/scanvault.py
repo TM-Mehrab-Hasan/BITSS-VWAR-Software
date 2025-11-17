@@ -8,8 +8,8 @@ from datetime import datetime
 
 from config import SCANVAULT_FOLDER, MAX_CAPTURES_PER_SECOND, MAX_BURST_CAPTURES, BURST_WINDOW_SECONDS
 from utils.logger import log_message, telemetry_inc
-from utils.installation_mode import get_installation_mode
 from utils.scanvault_logger import log_capture, log_duplicate, log_rate_limit
+from utils.installation_detector import get_installation_detector
 
 
 _recent_signatures: dict[str, float] = {}
@@ -129,30 +129,20 @@ def vault_capture_file(file_path: str, event: str | None = None) -> Tuple[str, s
     # Record this capture
     _capture_timestamps.append(current_time)
     
-    # Check installation mode - scan in-place for installer files
-    install_mode = get_installation_mode()
-    if install_mode.should_skip_file(file_path):
-        # 🔧 INSTALLATION MODE: Scan file in original location instead of moving to vault
-        log_message(f"[INSTALL_MODE] Scanning in-place (not vaulting): {file_path}")
-        from Scanning.scanner_core import scan_file_for_realtime
+    # 🔧 CHECK INSTALLATION MODE: If installer is running, don't vault - add directly to queue for in-place scanning
+    detector = get_installation_detector()
+    if detector.is_file_being_installed(file_path):
+        # File is part of an active installation - don't move it, just queue for in-place scanning
+        log_message(f"[SCANVAULT] 🔧 Installation active - queuing for in-place scan: {os.path.basename(file_path)}")
         
+        # Add directly to queue without vaulting
+        from utils.scanvault_queue import add_to_queue
         try:
-            result = scan_file_for_realtime(file_path)
-            matched, rule, qpath, meta_path = result[:4]
-            
-            if matched:
-                # Malware detected - file already quarantined by scan_file_for_realtime
-                log_message(f"[INSTALL_MODE] Threat quarantined during in-place scan: {file_path} (Rule: {rule})")
-                telemetry_inc('install_mode_threat_detected')
-                raise RuntimeError(f"Installation mode: Threat detected and quarantined: {rule}")
-            else:
-                # Clean file - leave in place, don't vault
-                log_message(f"[INSTALL_MODE] Clean file, left in original location: {file_path}")
-                telemetry_inc('install_mode_clean_file')
-                raise RuntimeError(f"Installation mode: Clean file, not vaulted")
-        except Exception as scan_error:
-            # Re-raise scan errors or quarantine success
-            raise RuntimeError(f"Installation mode scan: {scan_error}")
+            add_to_queue(file_path)
+            telemetry_inc('installation_mode_queued')
+            raise RuntimeError(f"Installation mode: File queued for in-place scanning")
+        except Exception as queue_error:
+            raise RuntimeError(f"Installation mode queue: {queue_error}")
 
     os.makedirs(SCANVAULT_FOLDER, exist_ok=True)
 
